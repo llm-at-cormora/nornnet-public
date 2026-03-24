@@ -1,4 +1,3 @@
-# tests/bats/common.bash
 # Shared test utilities for nornnet tests
 
 # Assert command succeeds
