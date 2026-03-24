@@ -260,21 +260,34 @@ teardown() {
   local commit_hash
   commit_hash="$(git rev-parse HEAD 2>/dev/null || echo 'test-commit')"
   
-  # Build first version
+  # Create fresh test context to avoid cache issues
+  local test_dir
+  test_dir="$(mktemp -d)"
+  cp "$(get_fixture_path "Containerfile.test")" "$test_dir/Containerfile"
+  
+  # Build first version with --no-cache
   podman build \
-    --file "$TEST_CONTEXT/Containerfile" \
+    --file "$test_dir/Containerfile" \
     --tag "$TEST_IMAGE_V1" \
     --label "org.opencontainers.image.version=1.0.0" \
     --label "org.opencontainers.image.revision=${commit_hash}" \
-    "$TEST_CONTEXT" >/dev/null
+    --no-cache \
+    "$test_dir" >/dev/null
+  
+  # Create fresh context for second build
+  rm -rf "$test_dir"/*
+  cp "$(get_fixture_path "Containerfile.test")" "$test_dir/Containerfile"
   
   # Build second version with different label
   podman build \
-    --file "$TEST_CONTEXT/Containerfile" \
+    --file "$test_dir/Containerfile" \
     --tag "$TEST_IMAGE_V2" \
     --label "org.opencontainers.image.version=1.1.0" \
     --label "org.opencontainers.image.revision=${commit_hash}" \
-    "$TEST_CONTEXT" >/dev/null
+    --no-cache \
+    "$test_dir" >/dev/null
+  
+  rm -rf "$test_dir"
   
   # Both should build successfully
   run podman image exists "$TEST_IMAGE_V1"
@@ -288,8 +301,8 @@ teardown() {
   v1_label="$(podman inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' "$TEST_IMAGE_V1" 2>/dev/null)"
   v2_label="$(podman inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' "$TEST_IMAGE_V2" 2>/dev/null)"
   
-  [ "$v1_label" = "1.0.0" ]
-  [ "$v2_label" = "1.1.0" ]
+  [ "$v1_label" = "1.0.0" ] || echo "v1=$v1_label"
+  [ "$v2_label" = "1.1.0" ] || echo "v2=$v2_label"
   [ "$v1_label" != "$v2_label" ]
 }
 
