@@ -5,12 +5,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/lib/logging.sh
-source "${SCRIPT_DIR}/scripts/lib/logging.sh"
-# shellcheck source=scripts/lib/config.sh
-source "${SCRIPT_DIR}/scripts/lib/config.sh"
-# shellcheck source=scripts/lib/registry.sh
-source "${SCRIPT_DIR}/scripts/lib/registry.sh"
+# shellcheck source=lib/logging.sh
+source "${SCRIPT_DIR}/lib/logging.sh"
+# shellcheck source=lib/config.sh
+source "${SCRIPT_DIR}/lib/config.sh"
+# shellcheck source=lib/registry.sh
+source "${SCRIPT_DIR}/lib/registry.sh"
 
 LOG_COMPONENT="push"
 
@@ -98,12 +98,12 @@ main() {
     
     # Build with labels
     if ! podman build \
-      --file "${SCRIPT_DIR}/Containerfile.app" \
+      --file "${SCRIPT_DIR}/../Containerfile.app" \
       --tag "nornnet-build:local" \
       --label "org.opencontainers.image.version=${VERSION}" \
       --label "org.opencontainers.image.revision=${commit_hash}" \
       --label "org.opencontainers.image.source=https://github.com/${NAMESPACE}/${IMAGE_NAME}" \
-      "${SCRIPT_DIR}"; then
+      "${SCRIPT_DIR}/.."; then
       log_error "Build failed"
       exit 1
     fi

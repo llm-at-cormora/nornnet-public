@@ -5,12 +5,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/lib/logging.sh
-source "${SCRIPT_DIR}/scripts/lib/logging.sh"
-# shellcheck source=scripts/lib/config.sh
-source "${SCRIPT_DIR}/scripts/lib/config.sh"
-# shellcheck source=scripts/lib/registry.sh
-source "${SCRIPT_DIR}/scripts/lib/registry.sh"
+# shellcheck source=lib/logging.sh
+source "${SCRIPT_DIR}/lib/logging.sh"
+# shellcheck source=lib/config.sh
+source "${SCRIPT_DIR}/lib/config.sh"
+# shellcheck source=lib/registry.sh
+source "${SCRIPT_DIR}/lib/registry.sh"
 
 LOG_COMPONENT="pull"
 
