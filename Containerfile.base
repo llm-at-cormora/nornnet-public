@@ -4,7 +4,7 @@ FROM quay.io/centos-bootc/centos-bootc:stream9
 # Required labels for bootc images
 LABEL org.opencontainers.image.title="Nornnet Base"
 LABEL org.opencontainers.image.version="0.1.0"
-LABEL org.opencontainers.image.source="https://github.com/OS2sandbox/nornnet"
+LABEL org.opencontainers.image.source="https://github.com/llm-at-cormora/nornnet"
 LABEL org.opencontainers.image.revision="${GIT_COMMIT:-unknown}"
 LABEL org.opencontainers.image.licenses="MIT"
 
