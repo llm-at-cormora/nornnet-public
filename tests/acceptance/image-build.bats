@@ -76,13 +76,13 @@ teardown() {
     "$TEST_CONTEXT"
   assert_success
   
-  # THEN image has bootc label
-  run podman inspect "$TEST_IMAGE" --format '{{index .Config.Labels "containers.bootc"}}'
+  # THEN image has bootc label (filter stderr to get clean output)
+  run bash -c "podman inspect '$TEST_IMAGE' --format '{{index .Config.Labels \"containers.bootc\"}}' 2>/dev/null"
   assert_success
   [ "$output" = "1" ]
   
   # AND image has bootable label
-  run podman inspect "$TEST_IMAGE" --format '{{index .Config.Labels "ostree.bootable"}}'
+  run bash -c "podman inspect '$TEST_IMAGE' --format '{{index .Config.Labels \"ostree.bootable\"}}' 2>/dev/null"
   assert_success
   [ "$output" = "1" ]
 }
@@ -103,8 +103,8 @@ teardown() {
     "$TEST_CONTEXT"
   assert_success
   
-  # THEN image has at least one layer
-  run podman inspect "$TEST_IMAGE" --format '{{len .RootFS.DiffIDs}}'
+  # THEN image has at least one layer (filter out stderr warnings)
+  run bash -c "podman inspect '$TEST_IMAGE' --format '{{len .RootFS.Layers}}' 2>/dev/null"
   assert_success
   [ "$output" -ge 1 ]
 }
@@ -121,8 +121,8 @@ teardown() {
     "$TEST_CONTEXT"
   assert_success
   
-  # THEN version label matches fixture
-  run podman inspect "$TEST_IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.version"}}'
+  # THEN version label matches fixture (filter stderr to get clean output)
+  run bash -c "podman inspect '$TEST_IMAGE' --format '{{index .Config.Labels \"org.opencontainers.image.version\"}}' 2>/dev/null"
   assert_success
   [ "$output" = "0.0.1-test" ]
 }
