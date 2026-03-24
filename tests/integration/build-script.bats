@@ -73,16 +73,14 @@ teardown() {
   [ $status -ne 0 ] || [ ${#output} -gt 0 ]
 }
 
-@test "build.sh validates Containerfile exists" {
-  # Create a temporary directory without Containerfile
-  local temp_dir
-  temp_dir="$(mktemp -d)"
-  local original_dir
-  original_dir="$(pwd)"
+@test "build.sh validates missing Containerfile" {
+  # Temporarily rename Containerfile.base to test error handling
+  local backup_file
+  backup_file="$(mktemp)"
   
-  # Backup and remove original build script behavior temporarily
-  # by changing to a directory without Containerfile
-  cd "$temp_dir"
+  if [ -f "$PROJECT_ROOT/Containerfile.base" ]; then
+    mv "$PROJECT_ROOT/Containerfile.base" "$backup_file"
+  fi
   
   export LAYER="base"
   export TAG="test"
@@ -90,11 +88,15 @@ teardown() {
   
   run "$BUILD_SCRIPT" 2>&1 || true
   
-  cd "$original_dir"
-  rm -rf "$temp_dir"
+  # Restore the file
+  if [ -f "$backup_file" ]; then
+    mv "$backup_file" "$PROJECT_ROOT/Containerfile.base"
+  fi
+  rm -f "$backup_file"
   
   # Should fail with error about missing Containerfile
-  assert_output_contains "not found" || [ $status -ne 0 ]
+  [ $status -ne 0 ]
+  assert_output_contains "not found"
 }
 
 @test "build.sh supports -l/--layer option" {
