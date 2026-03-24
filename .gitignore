@@ -3,3 +3,8 @@
 .dolt/
 *.db
 .beads-credential-key
+
+# Environment secrets
+.env
+.env.local
+.env.*.local

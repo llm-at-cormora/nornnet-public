@@ -1,5 +1,13 @@
 # Agent Instructions
 
+## GitHub Credentials
+
+Credentials are stored in `.env` (see `.env` file for `GITHUB_TOKEN`).
+
+**Token Scope**: `repo`, `write:packages`, `delete:packages`, `workflow`
+
+---
+
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
 
 ## Quick Reference

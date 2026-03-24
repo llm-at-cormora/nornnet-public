@@ -1,16 +1,20 @@
 ---
-description: Generate an actionable, dependency-ordered tasks.md for the feature based on available design artifacts.
-handoffs: 
-  - label: Analyze For Consistency
-    agent: speckit.analyze
-    prompt: Run a project analysis for consistency
-    send: true
-  - label: Implement Project
-    agent: speckit.implement
-    prompt: Start the implementation in phases
-    send: true
+description: Generate tasks with acceptance tests, integration tests, and test scaffolding
+  for each user story
+handoffs:
+- label: Analyze Consistency
+  agent: speckit.analyze
+  prompt: Run project analysis for consistency
+- label: Implement Project
+  agent: speckit.implement
+  prompt: Start implementation using sub-agents
+scripts:
+  sh: scripts/bash/check-prerequisites.sh --json
+  ps: scripts/powershell/check-prerequisites.ps1 -Json
 ---
 
+
+<!-- Source: spec-as-code -->
 ## User Input
 
 ```text
@@ -21,180 +25,191 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Pre-Execution Checks
 
-**Check for extension hooks (before tasks generation)**:
-- Check if `.specify/extensions.yml` exists in the project root.
-- If it exists, read it and look for entries under the `hooks.before_tasks` key
-- If the YAML cannot be parsed or is invalid, skip hook checking silently and continue normally
-- Filter out hooks where `enabled` is explicitly `false`. Treat hooks without an `enabled` field as enabled by default.
-- For each remaining hook, do **not** attempt to interpret or evaluate hook `condition` expressions:
-  - If the hook has no `condition` field, or it is null/empty, treat the hook as executable
-  - If the hook defines a non-empty `condition`, skip the hook and leave condition evaluation to the HookExecutor implementation
-- For each executable hook, output the following based on its `optional` flag:
-  - **Optional hook** (`optional: true`):
-    ```
-    ## Extension Hooks
+**Check for extension hooks (before tasks)**:
+- Check if `.specify/extensions.yml` exists
+- If exists, read and look for `hooks.before_tasks` entries
+- Filter out disabled hooks
+- Execute optional/mandatory hooks as appropriate
 
-    **Optional Pre-Hook**: {extension}
-    Command: `/{command}`
-    Description: {description}
+## Overview
 
-    Prompt: {prompt}
-    To execute: `/{command}`
-    ```
-  - **Mandatory hook** (`optional: false`):
-    ```
-    ## Extension Hooks
+You are generating tasks at `.specify/specs/[###-feature-name]/tasks.md`.
 
-    **Automatic Pre-Hook**: {extension}
-    Executing: `/{command}`
-    EXECUTE_COMMAND: {command}
-    
-    Wait for the result of the hook command before proceeding to the Outline.
-    ```
-- If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
+**CRITICAL**: Every task related to implementing features MUST be paired with:
+1. **Acceptance tests** that prove the feature works
+2. **Integration tests** that prove components work together
+3. **Test scaffolding** tasks to set up the testing infrastructure
 
-## Outline
-
-1. **Setup**: Run `.specify/scripts/bash/check-prerequisites.sh --json` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
-
-2. **Load design documents**: Read from FEATURE_DIR:
-   - **Required**: plan.md (tech stack, libraries, structure), spec.md (user stories with priorities)
-   - **Optional**: data-model.md (entities), contracts/ (interface contracts), research.md (decisions), quickstart.md (test scenarios)
-   - Note: Not all projects have all documents. Generate tasks based on what's available.
-
-3. **Execute task generation workflow**:
-   - Load plan.md and extract tech stack, libraries, project structure
-   - Load spec.md and extract user stories with their priorities (P1, P2, P3, etc.)
-   - If data-model.md exists: Extract entities and map to user stories
-   - If contracts/ exists: Map interface contracts to user stories
-   - If research.md exists: Extract decisions for setup tasks
-   - Generate tasks organized by user story (see Task Generation Rules below)
-   - Generate dependency graph showing user story completion order
-   - Create parallel execution examples per user story
-   - Validate task completeness (each user story has all needed tasks, independently testable)
-
-4. **Generate tasks.md**: Use `.specify/templates/tasks-template.md` as structure, fill with:
-   - Correct feature name from plan.md
-   - Phase 1: Setup tasks (project initialization)
-   - Phase 2: Foundational tasks (blocking prerequisites for all user stories)
-   - Phase 3+: One phase per user story (in priority order from spec.md)
-   - Each phase includes: story goal, independent test criteria, tests (if requested), implementation tasks
-   - Final Phase: Polish & cross-cutting concerns
-   - All tasks must follow the strict checklist format (see Task Generation Rules below)
-   - Clear file paths for each task
-   - Dependencies section showing story completion order
-   - Parallel execution examples per story
-   - Implementation strategy section (MVP first, incremental delivery)
-
-5. **Report**: Output path to generated tasks.md and summary:
-   - Total task count
-   - Task count per user story
-   - Parallel opportunities identified
-   - Independent test criteria for each story
-   - Suggested MVP scope (typically just User Story 1)
-   - Format validation: Confirm ALL tasks follow the checklist format (checkbox, ID, labels, file paths)
-
-6. **Check for extension hooks**: After tasks.md is generated, check if `.specify/extensions.yml` exists in the project root.
-   - If it exists, read it and look for entries under the `hooks.after_tasks` key
-   - If the YAML cannot be parsed or is invalid, skip hook checking silently and continue normally
-   - Filter out hooks where `enabled` is explicitly `false`. Treat hooks without an `enabled` field as enabled by default.
-   - For each remaining hook, do **not** attempt to interpret or evaluate hook `condition` expressions:
-     - If the hook has no `condition` field, or it is null/empty, treat the hook as executable
-     - If the hook defines a non-empty `condition`, skip the hook and leave condition evaluation to the HookExecutor implementation
-   - For each executable hook, output the following based on its `optional` flag:
-     - **Optional hook** (`optional: true`):
-       ```
-       ## Extension Hooks
-
-       **Optional Hook**: {extension}
-       Command: `/{command}`
-       Description: {description}
-
-       Prompt: {prompt}
-       To execute: `/{command}`
-       ```
-     - **Mandatory hook** (`optional: false`):
-       ```
-       ## Extension Hooks
-
-       **Automatic Hook**: {extension}
-       Executing: `/{command}`
-       EXECUTE_COMMAND: {command}
-       ```
-   - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
-
-Context for task generation: $ARGUMENTS
-
-The tasks.md should be immediately executable - each task must be specific enough that an LLM can complete it without additional context.
+**THE AGENT MUST NOT start working on a task before its tests are COMPLETE.**
 
 ## Task Generation Rules
 
-**CRITICAL**: Tasks MUST be organized by user story to enable independent implementation and testing.
+### Task Format (STRICT)
 
-**Tests are OPTIONAL**: Only generate test tasks if explicitly requested in the feature specification or if user requests TDD approach.
-
-### Checklist Format (REQUIRED)
-
-Every task MUST strictly follow this format:
+Every task MUST follow this format:
 
 ```text
-- [ ] [TaskID] [P?] [Story?] Description with file path
+- [ ] [TASK_ID] [P?] [STORY?] Description with exact file paths
 ```
 
-**Format Components**:
-
-1. **Checkbox**: ALWAYS start with `- [ ]` (markdown checkbox)
-2. **Task ID**: Sequential number (T001, T002, T003...) in execution order
-3. **[P] marker**: Include ONLY if task is parallelizable (different files, no dependencies on incomplete tasks)
-4. **[Story] label**: REQUIRED for user story phase tasks only
-   - Format: [US1], [US2], [US3], etc. (maps to user stories from spec.md)
-   - Setup phase: NO story label
-   - Foundational phase: NO story label  
-   - User Story phases: MUST have story label
-   - Polish phase: NO story label
-5. **Description**: Clear action with exact file path
-
-**Examples**:
-
-- ✅ CORRECT: `- [ ] T001 Create project structure per implementation plan`
-- ✅ CORRECT: `- [ ] T005 [P] Implement authentication middleware in src/middleware/auth.py`
-- ✅ CORRECT: `- [ ] T012 [P] [US1] Create User model in src/models/user.py`
-- ✅ CORRECT: `- [ ] T014 [US1] Implement UserService in src/services/user_service.py`
-- ❌ WRONG: `- [ ] Create User model` (missing ID and Story label)
-- ❌ WRONG: `T001 [US1] Create model` (missing checkbox)
-- ❌ WRONG: `- [ ] [US1] Create User model` (missing Task ID)
-- ❌ WRONG: `- [ ] T001 [US1] Create model` (missing file path)
-
-### Task Organization
-
-1. **From User Stories (spec.md)** - PRIMARY ORGANIZATION:
-   - Each user story (P1, P2, P3...) gets its own phase
-   - Map all related components to their story:
-     - Models needed for that story
-     - Services needed for that story
-     - Interfaces/UI needed for that story
-     - If tests requested: Tests specific to that story
-   - Mark story dependencies (most stories should be independent)
-
-2. **From Contracts**:
-   - Map each interface contract → to the user story it serves
-   - If tests requested: Each interface contract → contract test task [P] before implementation in that story's phase
-
-3. **From Data Model**:
-   - Map each entity to the user story(ies) that need it
-   - If entity serves multiple stories: Put in earliest story or Setup phase
-   - Relationships → service layer tasks in appropriate story phase
-
-4. **From Setup/Infrastructure**:
-   - Shared infrastructure → Setup phase (Phase 1)
-   - Foundational/blocking tasks → Foundational phase (Phase 2)
-   - Story-specific setup → within that story's phase
+**Components**:
+1. **Checkbox**: ALWAYS `- [ ]`
+2. **Task ID**: Sequential (T001, T002...)
+3. **[P] marker**: Parallelizable (different files, no dependencies)
+4. **[STORY] label**: Which user story this belongs to (e.g., [US1])
+5. **Description**: Action + exact file path
 
 ### Phase Structure
 
-- **Phase 1**: Setup (project initialization)
-- **Phase 2**: Foundational (blocking prerequisites - MUST complete before user stories)
-- **Phase 3+**: User Stories in priority order (P1, P2, P3...)
-  - Within each story: Tests (if requested) → Models → Services → Endpoints → Integration
-  - Each phase should be a complete, independently testable increment
-- **Final Phase**: Polish & Cross-Cutting Concerns
+#### Phase 1: Test Scaffolding Setup
+
+**Purpose**: Create the testing infrastructure BEFORE any feature work
+
+- [ ] T001 [P] Setup acceptance test framework (e.g., Playwright, Cypress)
+- [ ] T002 [P] Setup integration test framework (e.g., test containers)
+- [ ] T003 [P] Setup unit test framework
+- [ ] T004 Setup test data provisioning strategy
+- [ ] T005 [P] Create test utilities and helpers
+
+**Checkpoint**: Test infrastructure MUST be complete before Phase 3 begins
+
+#### Phase 2: Foundational (Blocking Prerequisites)
+
+**Purpose**: Core infrastructure that ALL user stories depend on
+
+**⚠️ CRITICAL**: No user story work until Phase 2 is complete
+
+- [ ] T006 Setup database schema/migrations
+- [ ] T007 [P] Implement core models/entities
+- [ ] T008 Configure error handling and logging
+- [ ] T009 Setup configuration management
+- [ ] T010 Create base test fixtures
+
+**Checkpoint**: Foundation ready → User story implementation can begin
+
+#### Phase 3+: User Stories (One Phase Per Story)
+
+**Structure for each user story**:
+
+```
+## Phase N: [US#] - [Story Title] (Priority: P#)
+
+**Acceptance Test Task** (MUST be first in story phase):
+- [ ] T0XX [US#] Write acceptance test for [story] in tests/acceptance/
+
+**Integration Test Task** (MUST before implementation):
+- [ ] T0XX [P] [US#] Write integration test for [component] in tests/integration/
+
+**Implementation Tasks**:
+- [ ] T0XX [P] [US#] Implement [component] in src/[path]
+- [ ] T0XX [US#] Implement [component] in src/[path]
+
+**Verification Task**:
+- [ ] T0XX [US#] Verify acceptance test passes
+```
+
+### Required Task Metadata
+
+For EVERY feature task, you MUST document:
+
+1. **Which user story does this relate to?**
+2. **Which acceptance test covers this?**
+3. **Which integration tests cover this?**
+
+```
+Example:
+
+- [ ] T015 [P] [US1] Implement UserService in src/services/user_service.py
+  - User Story: US1 (User Registration)
+  - Acceptance Test: T010 (test_user_registration_complete)
+  - Integration Tests: T012 (test_user_service_integration)
+```
+
+## Test Task Requirements
+
+### Acceptance Tests
+- **What**: End-to-end scenarios from spec
+- **Where**: `tests/acceptance/`
+- **Format**: Given-When-Then scenarios
+- **Data**: Must gather REAL data from system to prove it works
+
+### Integration Tests
+- **What**: Component interaction tests
+- **Where**: `tests/integration/`
+- **Scope**: How components communicate
+- **Data**: Mock or fixture data as appropriate
+
+### Unit Tests
+- **What**: Isolated component logic
+- **Where**: `tests/unit/`
+- **Scope**: Single component in isolation
+- **Format**: Arrange-Act-Assert
+
+## Execution Rules
+
+### CRITICAL: Test-Before-Code Discipline
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   TASK COMPLETION FLOW                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. IDENTIFY task to work on                                     │
+│                    ↓                                              │
+│  2. FIND corresponding test task(s)                              │
+│     • Acceptance test MUST exist                                 │
+│     • Integration test(s) MUST exist                             │
+│                    ↓                                              │
+│  3. VERIFY tests are COMPLETE (not just written)                 │
+│     • If tests incomplete → report issue, do NOT proceed         │
+│                    ↓                                              │
+│  4. RUN tests → they MUST FAIL (expected)                        │
+│                    ↓                                              │
+│  5. IMPLEMENT feature                                            │
+│                    ↓                                              │
+│  6. RUN tests → they MUST PASS                                   │
+│     • If fail → fix implementation, NOT tests                    │
+│     • If test is wrong → report, do NOT change                   │
+│                    ↓                                              │
+│  7. MARK task complete [X]                                       │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Sub-Agent Task Execution
+
+**When using sub-agents for implementation**:
+
+1. One sub-agent PER task
+2. Sub-agent receives:
+   - Task description with file paths
+   - Link to acceptance test (must pass)
+   - Link to integration tests (must pass)
+3. Sub-agent MUST NOT modify tests
+4. If sub-agent finds test issues → write report, do not change tests
+
+## Validation Checklist
+
+Before generating tasks.md, verify:
+
+- [ ] Test scaffolding setup tasks exist (Phase 1)
+- [ ] Foundational tasks exist (Phase 2) - blocks all stories
+- [ ] Each user story has acceptance test task
+- [ ] Each user story has integration test task(s)
+- [ ] Each feature task links to its tests
+- [ ] All tasks have exact file paths
+- [ ] Parallel markers [P] are correct
+
+## Output
+
+Write to `.specify/specs/[###-feature-name]/tasks.md`
+
+Report:
+- Total task count
+- Tasks per phase
+- Parallel opportunities
+- Test coverage per story
+
+## Post-Execution Hooks
+
+After tasks generation, check for `hooks.after_tasks` in `.specify/extensions.yml` and execute appropriately.

@@ -1,15 +1,20 @@
 ---
-description: Create or update the feature specification from a natural language feature description.
-handoffs: 
-  - label: Build Technical Plan
-    agent: speckit.plan
-    prompt: Create a plan for the spec. I am building with...
-  - label: Clarify Spec Requirements
-    agent: speckit.clarify
-    prompt: Clarify specification requirements
-    send: true
+description: Define feature specifications with acceptance scenarios that expose backend
+  complexity through test scaffolding
+handoffs:
+- label: Create Plan
+  agent: speckit.plan
+  prompt: Create technical implementation plan based on the specification
+- label: Clarify Requirements
+  agent: speckit.clarify
+  prompt: Clarify underspecified areas in the requirements
+scripts:
+  sh: scripts/bash/check-prerequisites.sh --json
+  ps: scripts/powershell/check-prerequisites.ps1 -Json
 ---
 
+
+<!-- Source: spec-as-code -->
 ## User Input
 
 ```text
@@ -18,289 +23,244 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
+## Overview
+
+You are creating a feature specification at `.specify/specs/[###-feature-name]/spec.md`. This specification:
+
+1. Focuses on **WHAT** and **WHY**, not the **HOW**
+2. Describes **acceptance scenarios** that hide backend complexity
+3. Exposes **logical components** through test scaffolding (discovered in plan phase)
+4. Follows the principle: "The spec tells WHAT, the plan tells HOW, the tests PROVE it"
+
 ## Pre-Execution Checks
 
-**Check for extension hooks (before specification)**:
+Check for extension hooks (before specification):
 - Check if `.specify/extensions.yml` exists in the project root.
 - If it exists, read it and look for entries under the `hooks.before_specify` key
-- If the YAML cannot be parsed or is invalid, skip hook checking silently and continue normally
-- Filter out hooks where `enabled` is explicitly `false`. Treat hooks without an `enabled` field as enabled by default.
-- For each remaining hook, do **not** attempt to interpret or evaluate hook `condition` expressions:
-  - If the hook has no `condition` field, or it is null/empty, treat the hook as executable
-  - If the hook defines a non-empty `condition`, skip the hook and leave condition evaluation to the HookExecutor implementation
-- For each executable hook, output the following based on its `optional` flag:
-  - **Optional hook** (`optional: true`):
-    ```
-    ## Extension Hooks
-
-    **Optional Pre-Hook**: {extension}
-    Command: `/{command}`
-    Description: {description}
-
-    Prompt: {prompt}
-    To execute: `/{command}`
-    ```
-  - **Mandatory hook** (`optional: false`):
-    ```
-    ## Extension Hooks
-
-    **Automatic Pre-Hook**: {extension}
-    Executing: `/{command}`
-    EXECUTE_COMMAND: {command}
-
-    Wait for the result of the hook command before proceeding to the Outline.
-    ```
-- If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
+- Filter out hooks where `enabled` is explicitly `false`.
+- For each remaining hook, output the appropriate block (optional or mandatory)
+- If no hooks registered or file missing, skip silently
 
 ## Outline
 
-The text the user typed after `/speckit.specify` in the triggering message **is** the feature description. Assume you always have it available in this conversation even if `$ARGUMENTS` appears literally below. Do not ask the user to repeat it unless they provided an empty command.
+1. **Setup**: Run `{SCRIPT}` from repo root to get FEATURE_SPEC, SPECS_DIR, BRANCH
 
-Given that feature description, do this:
+2. **Load context**: Read `.specify/memory/constitution.md` to understand project principles
 
-1. **Generate a concise short name** (2-4 words) for the branch:
-   - Analyze the feature description and extract the most meaningful keywords
-   - Create a 2-4 word short name that captures the essence of the feature
-   - Use action-noun format when possible (e.g., "add-user-auth", "fix-payment-bug")
-   - Preserve technical terms and acronyms (OAuth2, API, JWT, etc.)
-   - Keep it concise but descriptive enough to understand the feature at a glance
-   - Examples:
-     - "I want to add user authentication" → "user-auth"
-     - "Implement OAuth2 integration for the API" → "oauth2-api-integration"
-     - "Create a dashboard for analytics" → "analytics-dashboard"
-     - "Fix payment processing timeout bug" → "fix-payment-timeout"
+3. **Execute specification workflow**:
 
-2. **Create the feature branch** by running the script with `--short-name` (and `--json`). In sequential mode, do NOT pass `--number` — the script auto-detects the next available number. In timestamp mode, the script generates a `YYYYMMDD-HHMMSS` prefix automatically:
+### Phase 1: Requirements Gathering
 
-   **Branch numbering mode**: Before running the script, check if `.specify/init-options.json` exists and read the `branch_numbering` value.
-   - If `"timestamp"`, add `--timestamp` (Bash) or `-Timestamp` (PowerShell) to the script invocation
-   - If `"sequential"` or absent, do not add any extra flag (default behavior)
+> **Pattern Reference**: This phase follows the same discovery approach as constitution Steps 5-8, 
+> where experts are determined based on project content.
 
-   - Bash example: `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS" --json --short-name "user-auth" "Add user authentication"`
-   - Bash (timestamp): `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS" --json --timestamp --short-name "user-auth" "Add user authentication"`
-   - PowerShell example: `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS" -Json -ShortName "user-auth" "Add user authentication"`
-   - PowerShell (timestamp): `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS" -Json -Timestamp -ShortName "user-auth" "Add user authentication"`
+**Focus on user needs, not technical implementation**
 
-   **IMPORTANT**:
-   - Do NOT pass `--number` — the script determines the correct next number automatically
-   - Always include the JSON flag (`--json` for Bash, `-Json` for PowerShell) so the output can be parsed reliably
-   - You must only ever run this script once per feature
-   - The JSON is provided in the terminal as output - always refer to it to get the actual content you're looking for
-   - The JSON output will contain BRANCH_NAME and SPEC_FILE paths
-   - For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot")
+1. **Identify the problem being solved**
+   - What user pain does this solve?
+   - Who are the stakeholders?
+   - What are the success criteria?
 
-3. Load `.specify/templates/spec-template.md` to understand required sections.
+2. **Define acceptance scenarios (NOT implementation)**
+   - Write scenarios as **black-box tests**
+   - Each scenario describes observable behavior
+   - Hide internal complexity (kitchen operations, service protocols, staff workflows)
+   - Example: "Guest checks into hotel and receives room key" NOT "Front desk queries room database and dispatches bellhop service"
 
-4. Follow this execution flow:
+3. **Specify logical components (at domain level)**
+   - Describe what the system DOES (domain verbs)
+   - Do NOT specify how it does it (no process machinery)
+   - Components emerge from acceptance scenarios
 
-    1. Parse user description from Input
-       If empty: ERROR "No feature description provided"
-    2. Extract key concepts from description
-       Identify: actors, actions, data, constraints
-    3. For unclear aspects:
-       - Make informed guesses based on context and industry standards
-       - Only mark with [NEEDS CLARIFICATION: specific question] if:
-         - The choice significantly impacts feature scope or user experience
-         - Multiple reasonable interpretations exist with different implications
-         - No reasonable default exists
-       - **LIMIT: Maximum 3 [NEEDS CLARIFICATION] markers total**
-       - Prioritize clarifications by impact: scope > security/privacy > user experience > technical details
-    4. Fill User Scenarios & Testing section
-       If no clear user flow: ERROR "Cannot determine user scenarios"
-    5. Generate Functional Requirements
-       Each requirement must be testable
-       Use reasonable defaults for unspecified details (document assumptions in Assumptions section)
-    6. Define Success Criteria
-       Create measurable, technology-agnostic outcomes
-       Include both quantitative metrics (time, performance, volume) and qualitative measures (user satisfaction, task completion)
-       Each criterion must be verifiable without implementation details
-    7. Identify Key Entities (if data involved)
-    8. Return: SUCCESS (spec ready for planning)
+4. **Define quality attributes**
+   - Performance requirements (if any)
+   - Security requirements (if any)
+   - Usability requirements (if any)
 
-5. Write the specification to SPEC_FILE using the template structure, replacing placeholders with concrete details derived from the feature description (arguments) while preserving section order and headings.
+5. **Identify Cross-Cutting concerns**
+    - Which concerns span across the entire system?
 
-6. **Specification Quality Validation**: After writing the initial spec, validate it against quality criteria:
+### Phase 2: User Stories with Traceability
 
-   a. **Create Spec Quality Checklist**: Generate a checklist file at `FEATURE_DIR/checklists/requirements.md` using the checklist template structure with these validation items:
+Each user story MUST have:
 
-      ```markdown
-      # Specification Quality Checklist: [FEATURE NAME]
-      
-      **Purpose**: Validate specification completeness and quality before proceeding to planning
-      **Created**: [DATE]
-      **Feature**: [Link to spec.md]
-      
-      ## Content Quality
-      
-      - [ ] No implementation details (languages, frameworks, APIs)
-      - [ ] Focused on user value and business needs
-      - [ ] Written for non-technical stakeholders
-      - [ ] All mandatory sections completed
-      
-      ## Requirement Completeness
-      
-      - [ ] No [NEEDS CLARIFICATION] markers remain
-      - [ ] Requirements are testable and unambiguous
-      - [ ] Success criteria are measurable
-      - [ ] Success criteria are technology-agnostic (no implementation details)
-      - [ ] All acceptance scenarios are defined
-      - [ ] Edge cases are identified
-      - [ ] Scope is clearly bounded
-      - [ ] Dependencies and assumptions identified
-      
-      ## Feature Readiness
-      
-      - [ ] All functional requirements have clear acceptance criteria
-      - [ ] User scenarios cover primary flows
-      - [ ] Feature meets measurable outcomes defined in Success Criteria
-      - [ ] No implementation details leak into specification
-      
-      ## Notes
-      
-      - Items marked incomplete require spec updates before `/speckit.clarify` or `/speckit.plan`
-      ```
+1. **ID** (e.g., US1, US2, US3)
+2. **Title** (concise description)
+3. **Priority** (P1 = "cruial even in PoC", P2 = "expected in MVP", P3 = "need-to-have", P4 = "nice-to-have")
+4. **Story text** (As a... I want... so that...)
+5. **Acceptance criteria** (verifiable, testable conditions)
+6. **Traceability** (which acceptance scenarios this story supports)
 
-   b. **Run Validation Check**: Review the spec against each checklist item:
-      - For each item, determine if it passes or fails
-      - Document specific issues found (quote relevant spec sections)
+### Phase 3: Acceptance Scenario Mapping
 
-   c. **Handle Validation Results**:
+For each acceptance scenario:
 
-      - **If all items pass**: Mark checklist complete and proceed to step 7
+1. List which **logical components** it exercises
+2. List which **user stories** it supports
+3. Note any **cross-cutting concerns** it triggers
 
-      - **If items fail (excluding [NEEDS CLARIFICATION])**:
-        1. List the failing items and specific issues
-        2. Update the spec to address each issue
-        3. Re-run validation until all items pass (max 3 iterations)
-        4. If still failing after 3 iterations, document remaining issues in checklist notes and warn user
+**IMPORTANT**: The acceptance scenarios hide backend complexity. The plan phase will "uncover" the underlying operations through the test scaffolding research.
 
-      - **If [NEEDS CLARIFICATION] markers remain**:
-        1. Extract all [NEEDS CLARIFICATION: ...] markers from the spec
-        2. **LIMIT CHECK**: If more than 3 markers exist, keep only the 3 most critical (by scope/security/UX impact) and make informed guesses for the rest
-        3. For each clarification needed (max 3), present options to user in this format:
+## Spec Template Structure
 
-           ```markdown
-           ## Question [N]: [Topic]
-           
-           **Context**: [Quote relevant spec section]
-           
-           **What we need to know**: [Specific question from NEEDS CLARIFICATION marker]
-           
-           **Suggested Answers**:
-           
-           | Option | Answer | Implications |
-           |--------|--------|--------------|
-           | A      | [First suggested answer] | [What this means for the feature] |
-           | B      | [Second suggested answer] | [What this means for the feature] |
-           | C      | [Third suggested answer] | [What this means for the feature] |
-           | Custom | Provide your own answer | [Explain how to provide custom input] |
-           
-           **Your choice**: _[Wait for user response]_
-           ```
+Use `.specify/templates/spec-template.md` as the document scaffold. The specification MUST include:
 
-        4. **CRITICAL - Table Formatting**: Ensure markdown tables are properly formatted:
-           - Use consistent spacing with pipes aligned
-           - Each cell should have spaces around content: `| Content |` not `|Content|`
-           - Header separator must have at least 3 dashes: `|--------|`
-           - Test that the table renders correctly in markdown preview
-        5. Number questions sequentially (Q1, Q2, Q3 - max 3 total)
-        6. Present all questions together before waiting for responses
-        7. Wait for user to respond with their choices for all questions (e.g., "Q1: A, Q2: Custom - [details], Q3: B")
-        8. Update the spec by replacing each [NEEDS CLARIFICATION] marker with the user's selected or provided answer
-        9. Re-run validation after all clarifications are resolved
+### 1. Feature Overview
+- Problem statement
+- Success criteria
+- Scope (in/out)
 
-   d. **Update Checklist**: After each validation iteration, update the checklist file with current pass/fail status
+### 2. User Stories
+- Organized by priority (P1, P2, P3, P4)
+- Each with acceptance criteria
 
-7. Report completion with branch name, spec file path, checklist results, and readiness for the next phase (`/speckit.clarify` or `/speckit.plan`).
+### 3. Acceptance Scenarios
+- **Format**: Given-When-Then
+- **Black-box**: Describe external behavior only
+- **Verifiable**: Must be testable
+- **Independent**: Can be implemented/tested independently
 
-8. **Check for extension hooks**: After reporting completion, check if `.specify/extensions.yml` exists in the project root.
-   - If it exists, read it and look for entries under the `hooks.after_specify` key
-   - If the YAML cannot be parsed or is invalid, skip hook checking silently and continue normally
-   - Filter out hooks where `enabled` is explicitly `false`. Treat hooks without an `enabled` field as enabled by default.
-   - For each remaining hook, do **not** attempt to interpret or evaluate hook `condition` expressions:
-     - If the hook has no `condition` field, or it is null/empty, treat the hook as executable
-     - If the hook defines a non-empty `condition`, skip the hook and leave condition evaluation to the HookExecutor implementation
-   - For each executable hook, output the following based on its `optional` flag:
-     - **Optional hook** (`optional: true`):
-       ```
-       ## Extension Hooks
+### 4. Logical Components (Domain Level)
 
-       **Optional Hook**: {extension}
-       Command: `/{command}`
-       Description: {description}
+**A logical component represents a distinct capability or responsibility area that emerges from the acceptance scenarios. It answers: "What does the system need to BE able to DO?"**
 
-       Prompt: {prompt}
-       To execute: `/{command}`
-       ```
-     - **Mandatory hook** (`optional: false`):
-       ```
-       ## Extension Hooks
+**Characteristics of a Logical Component:**
+- Emerges from acceptance scenarios (what the system MUST do)
+- Identified by domain verbs: manages, processes, handles, coordinates, tracks
+- Each component has a clear owner (a domain expert)
+- Components collaborate to fulfill acceptance scenarios
 
-       **Automatic Hook**: {extension}
-       Executing: `/{command}`
-       EXECUTE_COMMAND: {command}
-       ```
-   - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
+**Example:**
+If acceptance scenarios mention "guest boards ride", "guest purchases food", "guest enters park", the logical components might be:
+- **Ride Operations** (manages ride availability and boarding)
+- **Food & Beverage Services** (processes food orders and fulfillment)
+- **Entry Gate Services** (handles ticket validation and entry)
+- **Guest Services** (coordinates lost children, complaints, refunds)
 
-**NOTE:** The script creates and checks out the new branch and initializes the spec file before writing.
+### 5. Cross-Cutting Concerns
 
-## Quick Guidelines
+**A cross-cutting concern represents a quality or constraint that SPANS across all logical components. It answers: "What must ALL parts of the system CONSIDER?"**
 
-- Focus on **WHAT** users need and **WHY**.
-- Avoid HOW to implement (no tech stack, APIs, code structure).
-- Written for business stakeholders, not developers.
-- DO NOT create any checklists that are embedded in the spec. That will be a separate command.
+**Characteristics of a Cross-Cutting Concern:**
+- Applies to ALL logical components, not just one
+- Often represents non-functional requirements (safety, compliance, reliability)
+- Does NOT "own" any domain functionality
+- Must be considered by every component
 
-### Section Requirements
+**Why is "Park Sanitation" a Cross-Cutting Concern but "Ride Operations" is not?**
+- **Ride Operations** is a logical component because it "owns" the capability of managing rides. It is responsible for making rides work.
+- **Park Sanitation** is NOT a logical component because it does not "own" any capability. Instead, it is a constraint that ALL components must consider: Ride Operations must maintain cleanliness, Food & Beverage must maintain cleanliness, Entry Gate must maintain cleanliness.
 
-- **Mandatory sections**: Must be completed for every feature
-- **Optional sections**: Include only when relevant to the feature
-- When a section doesn't apply, remove it entirely (don't leave as "N/A")
+**Example:**
+- **Park Sanitation** is a cross-cutting concern because EVERY department must maintain cleanliness standards
+- **Supply Provisioning** is a cross-cutting concern because it affects how ALL departments receive their materials
+- **Uniform Dress Code** is a cross-cutting concern because ALL staff must meet appearance standards
 
-### For AI Generation
+If the identified quality attributes are "Cleanliness" and "Operational Readiness", the cross-cutting concerns might be:
+- **Park Sanitation** (all departments must maintain cleanliness standards)
+- **Supply Provisioning** (all departments must receive materials and supplies on time) 
 
-When creating this spec from a user prompt:
+### 6. Acceptance Checklist
+A review checklist to validate spec quality:
+- [ ] Each user story has acceptance criteria
+- [ ] Each acceptance criterion is testable
+- [ ] Acceptance scenarios cover all user stories
+- [ ] No technology/implementation details in acceptance scenarios
+- [ ] Logical components are at domain level (not technical)
 
-1. **Make informed guesses**: Use context, industry standards, and common patterns to fill gaps
-2. **Document assumptions**: Record reasonable defaults in the Assumptions section
-3. **Limit clarifications**: Maximum 3 [NEEDS CLARIFICATION] markers - use only for critical decisions that:
-   - Significantly impact feature scope or user experience
-   - Have multiple reasonable interpretations with different implications
-   - Lack any reasonable default
-4. **Prioritize clarifications**: scope > security/privacy > user experience > technical details
-5. **Think like a tester**: Every vague requirement should fail the "testable and unambiguous" checklist item
-6. **Common areas needing clarification** (only if no reasonable default exists):
-   - Feature scope and boundaries (include/exclude specific use cases)
-   - User types and permissions (if multiple conflicting interpretations possible)
-   - Security/compliance requirements (when legally/financially significant)
+## Validation Before Writing
 
-**Examples of reasonable defaults** (don't ask about these):
+Before writing the specification, perform expert validation following the constitution pattern:
 
-- Data retention: Industry-standard practices for the domain
-- Performance targets: Standard web/mobile app expectations unless specified
-- Error handling: User-friendly messages with appropriate fallbacks
-- Authentication method: Standard session-based or OAuth2 for web apps
-- Integration patterns: Use project-appropriate patterns (REST/GraphQL for web services, function calls for libraries, CLI args for tools, etc.)
+### Phase 1: Load and Analyze Draft
 
-### Success Criteria Guidelines
+1. **Load the drafted specification** from `.specify/specs/[###-feature-name]/spec.md`
+2. **Parse Section 4 (Logical Components)**: Extract department names and responsibilities
+3. **Parse Section 5 (Cross-Cutting Concerns)**: Extract concern types
 
-Success criteria must be:
+### Phase 2: Determine Expert Fields
 
-1. **Measurable**: Include specific metrics (time, percentage, count, rate)
-2. **Technology-agnostic**: No mention of frameworks, languages, databases, or tools
-3. **User-focused**: Describe outcomes from user/business perspective, not system internals
-4. **Verifiable**: Can be tested/validated without knowing implementation details
+Based on SPEC CONTENT, determine expert fields:
 
-**Good examples**:
+**For Logical Components**, identify 2 experts that cover the identified domains. For example if the domains are "Ride Operations", "Guest Services", "Food & Beverage", "Ticketing", two experts that cover all of areas might be "Roller Coaster Engineering Expert" and "Theme Park Guest Experience Expert".
+Update the list of domains, which of the 2 experts is the DOMAIN OWNER. Every domain MUST have a domain owner. Example: Ride Operations → Roller Coaster Engineering Expert, Guest Services → Theme Park Guest Experience Expert.
 
-- "Users can complete checkout in under 3 minutes"
-- "System supports 10,000 concurrent users"
-- "95% of searches return results in under 1 second"
-- "Task completion rate improves by 40%"
+**For Cross-Cutting Concerns**, identify 2 experts based on concern types. For example, if the cross cutting concerns are "Park Sanitation", "Supply Provisioning", "Uniform Dress Code", "Staff Scheduling", two experts that cover all of areas might be "Chief Custodial Services Expert" and "Supply Chain Logistics Expert".
+In the list of cross-cutting concern, assign the appropriate expert to EACH OF THE CROSS-CUTTING CONCERNS. Every cross-cutting concern MUST have an owner. Example: Park Sanitation → Chief Custodial Services Expert, Supply Provisioning → Supply Chain Logistics Expert.
 
-**Bad examples** (implementation-focused):
 
-- "API response time is under 200ms" (too technical, use "Users see results instantly")
-- "Database can handle 1000 TPS" (implementation detail, use user-facing metric)
-- "React components render efficiently" (framework-specific)
-- "Redis cache hit rate above 80%" (technology-specific)
+### Phase 3: Create Expert Knowledge Bases
+
+For each of the 4 experts, dispatch parallel sub-agents using `/knowledge-base-from-books` skill:
+
+```
+Task: Create expert knowledge base for [Expert Name]
+
+Skill: /knowledge-base-from-books
+
+Expert Role: [Role description based on determined field]
+Owned Sections: Section 4 (Logical Components) and/or Section 5 (Cross-Cutting Concerns)
+Review Mandate: This expert will review specification sections to verify domain correctness, identify missing concerns, and ensure components are properly scoped
+Domain Knowledge: [Infer from spec content]
+Knowledge Base Location: .knowledge/<expert-slug>/
+```
+
+### Phase 4: Run Expert Reviews
+
+For each of the 4 experts, dispatch parallel sub-agents using `/knowledge-base-usage` skill:
+
+```
+Task: Review specification with [Expert Name]
+
+Skill: /knowledge-base-usage
+
+Knowledge Base Name: <expert-slug>
+Content to Review: [Full text of Section 4 or Section 5]
+Owned Sections: [Which section(s) this expert reviews]
+Review Instruction: Review your owned sections. Provide specific, actionable feedback on:
+1. Component completeness - are all necessary components identified?
+2. Responsibility clarity - are component boundaries clear?
+3. Missing concerns - are there gaps in coverage?
+4. Scope alignment - do components match the acceptance scenarios?
+You are reviewing a specification document - provide feedback as patterns/strategies, NOT specific technologies or numbers.
+```
+
+### Phase 5: Apply Expert Feedback
+
+1. Collect feedback from all 4 experts
+2. Merge feedback into specification updates
+3. Apply only refinements that enhance clarity and completeness
+4. Ensure changes do NOT introduce technology choices (those come in Plan phase)
+5. Changes should be patterns/strategies only, no specific implementations
+
+### Phase 6: Redo Acceptance Checklist
+
+After applying expert feedback, re-validate the specification:
+
+1. Re-run Section 7 Acceptance Checklist
+2. Verify all user stories have acceptance criteria
+3. Verify acceptance criteria are testable (Given-When-Then format)
+4. Verify logical components are domain-level (no implementation hints)
+5. Verify cross-cutting concerns cover all quality attributes
+6. Verify no technology choices remain in the document
+
+### Key Constraints
+
+- **Spec must NOT contain specific technologies or numbers**
+- **Expert feedback should only suggest patterns/strategies**
+- **All work must be done via sub-agents** (never do expert review yourself)
+
+## Output
+
+Write to `.specify/specs/[###-feature-name]/spec.md`
+
+Report:
+- Feature name and branch
+- User story count (by priority)
+- Acceptance scenario count
+- Key logical components identified
+- Suggested next step: `/speckit.plan`
+
+## Post-Execution Hooks
+
+After spec creation, check for `hooks.after_specify` in `.specify/extensions.yml` and execute appropriately.

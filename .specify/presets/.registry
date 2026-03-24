@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "presets": {
+    "spec-as-code": {
+      "version": "1.0.0",
+      "source": "local",
+      "manifest_hash": "sha256:25f8efb1a96f6e857f2650dfb0f03d2883d4d375b17862a7f5760180882e2ca0",
+      "enabled": true,
+      "priority": 10,
+      "registered_commands": {
+        "pi": [
+          "speckit.constitution",
+          "speckit.specify",
+          "speckit.plan",
+          "speckit.tasks",
+          "speckit.implement"
+        ]
+      },
+      "registered_skills": [],
+      "installed_at": "2026-03-24T18:06:29.566193+00:00"
+    }
+  }
+}

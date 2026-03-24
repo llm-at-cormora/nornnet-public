@@ -1,11 +1,15 @@
 ---
-description: Create or update the project constitution from interactive or provided principle inputs, ensuring all dependent templates stay in sync.
-handoffs: 
-  - label: Build Specification
-    agent: speckit.specify
-    prompt: Implement the feature specification based on the updated constitution. I want to build...
+description: Create or update the project constitution with test-first development
+  principles and TDD enforcement
+handoffs:
+- label: Build Specification
+  agent: speckit.specify
+  prompt: Implement the feature specification based on the updated constitution. I
+    want to build...
 ---
 
+
+<!-- Source: spec-as-code -->
 ## User Input
 
 ```text
@@ -14,71 +18,134 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
+**REQUIRED SKILLS**: Launch the `/using-superpowers` skill at the start of your work. This will help you structure this complicated and long task. **REMEMBER**: You are the orchestrator and planner, and your job is orchestrate the sub-agents that actually perform this work.
+
 ## Outline
 
-You are updating the project constitution at `.specify/memory/constitution.md`. This file is a TEMPLATE containing placeholder tokens in square brackets (e.g. `[PROJECT_NAME]`, `[PRINCIPLE_1_NAME]`). Your job is to (a) collect/derive concrete values, (b) fill the template precisely, and (c) propagate any amendments across dependent artifacts.
+You are updating the project constitution at `.specify/memory/constitution.md`. This file governs ALL subsequent development and MUST be treated as the source of truth.
 
-**Note**: If `.specify/memory/constitution.md` does not exist yet, it should have been initialized from `.specify/templates/constitution-template.md` during project setup. If it's missing, copy the template first.
+**CRITICAL**: This constitution emphasizes **Test-First Development (TDD)**. Every feature, every user story, every task MUST have a corresponding test BEFORE implementation begins. A task is NOT complete until its test passes.
 
-Follow this execution flow:
+### Execution Flow
 
-1. Load the existing constitution at `.specify/memory/constitution.md`.
-   - Identify every placeholder token of the form `[ALL_CAPS_IDENTIFIER]`.
-   **IMPORTANT**: The user might require less or more principles than the ones used in the template. If a number is specified, respect that - follow the general template. You will update the doc accordingly.
+1. Load the existing constitution at `.specify/memory/constitution.md`
+   - If missing, initialize from `.specify/templates/constitution-template.md`
 
-2. Collect/derive values for placeholders:
-   - If user input (conversation) supplies a value, use it.
-   - Otherwise infer from existing repo context (README, docs, prior constitution versions if embedded).
-   - For governance dates: `RATIFICATION_DATE` is the original adoption date (if unknown ask or mark TODO), `LAST_AMENDED_DATE` is today if changes are made, otherwise keep previous.
-   - `CONSTITUTION_VERSION` must increment according to semantic versioning rules:
-     - MAJOR: Backward incompatible governance/principle removals or redefinitions.
-     - MINOR: New principle/section added or materially expanded guidance.
-     - PATCH: Clarifications, wording, typo fixes, non-semantic refinements.
-   - If version bump type ambiguous, propose reasoning before finalizing.
+2. **IDENTIFY all placeholder tokens** of the form `[ALL_CAPS_IDENTIFIER]`
+   - Count them and confirm with user if the numbers match expectations
 
-3. Draft the updated constitution content:
-   - Replace every placeholder with concrete text (no bracketed tokens left except intentionally retained template slots that the project has chosen not to define yet—explicitly justify any left).
-   - Preserve heading hierarchy and comments can be removed once replaced unless they still add clarifying guidance.
-   - Ensure each Principle section: succinct name line, paragraph (or bullet list) capturing non‑negotiable rules, explicit rationale if not obvious.
-   - Ensure Governance section lists amendment procedure, versioning policy, and compliance review expectations.
+3. **Collect/derive values** for placeholders:
+   - User input takes priority
+   - Infer from existing repo context
+   - `CONSTITUTION_VERSION` increments per semantic versioning:
+     - MAJOR: Backward-incompatible governance changes
+     - MINOR: New principles or materially expanded guidance
+     - PATCH: Clarifications and non-semantic refinements
 
-4. Consistency propagation checklist (convert prior checklist into active validations):
-   - Read `.specify/templates/plan-template.md` and ensure any "Constitution Check" or rules align with updated principles.
-   - Read `.specify/templates/spec-template.md` for scope/requirements alignment—update if constitution adds/removes mandatory sections or constraints.
-   - Read `.specify/templates/tasks-template.md` and ensure task categorization reflects new or removed principle-driven task types (e.g., observability, versioning, testing discipline).
-   - Read each command file in `.specify/templates/commands/*.md` (including this one) to verify no outdated references (agent-specific names like CLAUDE only) remain when generic guidance is required.
-   - Read any runtime guidance docs (e.g., `README.md`, `docs/quickstart.md`, or agent-specific guidance files if present). Update references to principles changed.
+4. **Draft the updated constitution**:
+   - Replace ALL placeholders with concrete text
+   - Each principle MUST have: name, declarative rule, rationale
+   - **TDD Principle (REQUIRED)**: Must state that test-first is non-negotiable
+   - Include testing standards: acceptance tests, integration tests, unit tests
+   - Include quality gates: tests MUST pass before task completion
 
-5. Produce a Sync Impact Report (prepend as an HTML comment at top of the constitution file after update):
-   - Version change: old → new
-   - List of modified principles (old title → new title if renamed)
-   - Added sections
-   - Removed sections
-   - Templates requiring updates (✅ updated / ⚠ pending) with file paths
-   - Follow-up TODOs if any placeholders intentionally deferred.
+5. **Identify Constitution Expert Owners**:
+   - Analyze ALL articles/sections in the drafted constitution
+   - Group articles by domain.
+   - Determine the optimal division among **2 to 4 expert owners**
+   - Each expert MUST own at least one article; an expert can own multiple articles
+   - Goal: assign articles so each expert is genuinely qualified to review their owned sections
+   - **Each section header MUST indicate its owner**: Right after the section header, add `*(owned by: [Expert Name])*`
+     - Example: `### III. Bananas for everybody (NON-NEGOTIABLE) *(owned by: Developer Health Expert)*`
 
-6. Validation before final output:
-   - No remaining unexplained bracket tokens.
-   - Version line matches report.
-   - Dates ISO format YYYY-MM-DD.
-   - Principles are declarative, testable, and free of vague language ("should" → replace with MUST/SHOULD rationale where appropriate).
+6. **Create Expert Knowledge Bases** (dispatch parallel sub-agents for each expert):
+   - Launch `/knowledge-base-from-books` skill for EACH expert
+   - Use the **dispatching-parallel-agents** skill: one sub-agent per expert, all running concurrently
+   - For EACH expert, provide the following to the knowledge-base-from-books skill:
+      - **Expert Role**: The expert's specialization (e.g., "Banana Negotiation Expert", "Pear Comparison Investigator", "Fruits and Microbes Analyst")
+      - **Owned Articles**: List exactly which constitution articles this expert will own and review
+      - **Review Mandate**: Explain this expert will later review constitution changes and verify work adheres to their expertise
+      - **Domain Knowledge**: Any additional context about the expert's domain that should inform reviews
+   - Knowledge bases will be created at `.knowledge/<expert-slug>/` with:
+     - `SUMMARY.md` - Overview of the expert's domain and owned articles
+     - Tutorial files covering the expert's knowledge areas
+   - The sub-agent for each expert should use the constitution articles as source material
 
-7. Write the completed constitution back to `.specify/memory/constitution.md` (overwrite).
+7. **Run Expert Review** (dispatch parallel sub-agents for each expert):
+   - Launch `/knowledge-base-usage` skill for EACH expert
+   - Use the **dispatching-parallel-agents** skill: one sub-agent per expert, all running concurrently
+   - For EACH expert, provide the following to the knowledge-base-usage skill:
+      - **Knowledge Base Name**: The slug used in step 6 (e.g., `banana-negotiation-expert`, `pear-comparison-expert`)
+      - **Constitution Text**: The full drafted constitution
+      - **Owned Articles**: List of their owned articles for focused review
+      - **Review Instruction**: "Review your owned articles. Provide specific, actionable feedback to improve clarity, remove redundancy, and ensure each article is well-formed. You may NOT add new articles - only refine, merge, or clarify existing ones. What you are helping with is a constitution document - it describes strategies and patterns, not precise specifications. You must not name specific technologies, or set specific numbers in your feedback."
+   - The knowledge-base-usage skill will read the entire knowledge base, making the sub-agent "become" the expert for review purposes
+   - Collect feedback from all experts
 
-8. Output a final summary to the user with:
-   - New version and bump rationale.
-   - Any files flagged for manual follow-up.
-   - Suggested commit message (e.g., `docs: amend constitution to vX.Y.Z (principle additions + governance update)`).
+8. **Apply Expert Feedback**:
+   - Merge feedback into the constitution
+   - Apply only refinements that don't add new articles
+   - If experts suggest conflicting changes, prioritize the more restrictive interpretation
+   - Ensure TDD and test-first remain non-negotiable
+   - Changes based on expert feedback must not contain specific specifications. Instead, name patterns and strategies to look out for in the following specification phase. For example, don't say "Test Coverage must be >80%", but say "Test Coverage must be ambitious and regularly measured"
 
-Formatting & Style Requirements:
+9. **Consistency propagation**:
+   - Read `.specify/templates/plan-template.md` - ensure Constitution Check gates align
+   - Read `.specify/templates/spec-template.md` - ensure acceptance scenario requirements align
+   - Read `.specify/templates/tasks-template.md` - ensure test-first task ordering
+   - Read all command files in `.specify/templates/commands/*.md` - verify references
 
-- Use Markdown headings exactly as in the template (do not demote/promote levels).
-- Wrap long rationale lines to keep readability (<100 chars ideally) but do not hard enforce with awkward breaks.
-- Keep a single blank line between sections.
-- Avoid trailing whitespace.
+10. **Produce Sync Impact Report** (prepend as HTML comment after update):
+    ```html
+    <!--
+    Sync Impact Report:
+    - Version: old → new
+    - Modified principles: (old → new)
+    - Added sections
+    - Removed sections
+    - Templates requiring updates: ✅/⚠️ with paths
+    -->
+    ```
 
-If the user supplies partial updates (e.g., only one principle revision), still perform validation and version decision steps.
+11. **Validation**:
+    - Zero unexplained bracket tokens remaining
+    - Version line matches report
+    - Dates in ISO format (YYYY-MM-DD)
+    - Principles use MUST/SHOULD (not vague "should")
+    - TDD/test-first is EXPLICITLY stated as non-negotiable
 
-If critical info missing (e.g., ratification date truly unknown), insert `TODO(<FIELD_NAME>): explanation` and include in the Sync Impact Report under deferred items.
+12. **Write** to `.specify/memory/constitution.md`
 
-Do not create a new template; always operate on the existing `.specify/memory/constitution.md` file.
+13. **Output summary**:
+    - New version and bump rationale
+    - Files requiring manual follow-up
+    - Suggested commit message
+
+## TDD Enforcement (CRITICAL)
+
+The constitution MUST include these test-first principles:
+
+### Test-First Development (NON-NEGOTIABLE)
+- **RED**: Write the failing test FIRST before any implementation
+- **GREEN**: Write minimal code to make the test pass
+- **REFACTOR**: Improve code quality while keeping tests passing
+- **NEVER**: Write implementation code before its corresponding test
+- **ACCEPTANCE TESTS**: Each user story MUST have acceptance tests that validate end-to-end behavior
+- **INTEGRATION TESTS**: Cross-component interactions MUST have integration tests
+- **UNIT TESTS**: Core business logic MUST have unit tests
+- **TASK COMPLETION**: A task is only COMPLETE when its test(s) pass
+
+### Implementation Discipline
+- **NO SHORTCUTS**: Do not skip tests to "save time"
+- **PROOF OVER ASSERTIONS**: Tests must retrieve real data from the system to PROVE it works, not just assert "OK"
+- **TEST COVERAGE**: Every logical component described in the spec MUST have tests
+- **PARALLEL TESTING**: Where possible, run tests in parallel to verify no regressions
+
+## Governance
+
+The constitution supersedes all other practices. Amendments require:
+1. Documentation of the change
+2. Compliance review
+3. Migration plan for existing artifacts
+
+**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
