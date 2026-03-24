@@ -85,6 +85,8 @@ registry_check_anonymous_read() {
 # =============================================================================
 
 # Build full image reference
+# For semantic versions (X.Y.Z), adds v prefix (v1.0.0)
+# For 'latest', uses 'latest' without v prefix
 registry_full_image_name() {
   local registry="${1:-$REGISTRY_DEFAULT}"
   local namespace="${2:-$NAMESPACE_DEFAULT}"
@@ -94,7 +96,11 @@ registry_full_image_name() {
   local name="${registry}/${namespace}/${image}"
   
   if [[ -n "$version" ]]; then
-    echo "${name}:v${version}"
+    if [[ "$version" == "latest" ]]; then
+      echo "${name}:latest"
+    else
+      echo "${name}:v${version}"
+    fi
   else
     echo "${name}:latest"
   fi
