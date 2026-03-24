@@ -1,34 +1,29 @@
-# Configuration management for nornnet
+#!/usr/bin/env bash
+# Configuration management library
 
-CONFIG_DIR="${CONFIG_DIR:-$SCRIPT_DIR/../../config}"
-CONFIG_FILE="${CONFIG_FILE:-$CONFIG_DIR/default.conf}"
-
+# Load configuration from file
 load_config() {
-  if [ -f "$CONFIG_FILE" ]; then
-    # shellcheck disable=SC1090
-    source "$CONFIG_FILE"
-    log_debug "Loaded config from: $CONFIG_FILE"
-  else
-    log_warn "Config file not found: $CONFIG_FILE"
-  fi
+    local config_file="${CONFIG_FILE:-config/default.conf}"
+    
+    if [ -f "$config_file" ]; then
+        # Shellcheck can't track dynamically determined files
+        # shellcheck source=/dev/null
+        source "$config_file"
+    fi
 }
 
+# Get configuration value by key
+# Usage: get_config "KEY" "default_value"
 get_config() {
-  local key="$1"
-  local default="${2:-}"
-  local value
-  
-  # Load config if not already loaded
-  if [ -z "${DEFAULT_REGISTRY:-}" ]; then
-    load_config
-  fi
-  
-  # Get value using indirect variable reference
-  value="${!key:-}"
-  
-  if [ -n "$value" ]; then
-    echo "$value"
-  else
-    echo "$default"
-  fi
+    local key="$1"
+    local default="${2:-}"
+    
+    local value
+    value="${!key}"
+    
+    if [ -n "$value" ]; then
+        echo "$value"
+    else
+        echo "$default"
+    fi
 }

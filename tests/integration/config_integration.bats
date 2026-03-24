@@ -3,7 +3,9 @@
 
 load '../bats/common.bash'
 
-SCRIPT_DIR="$(cd "$(dirname "${BATS_TEST_DIRNAME}")/../../.." && pwd)/scripts"
+# Remove trailing slash from BATS_TEST_DIRNAME before using dirname
+BATS_TEST_DIRNAME_TRIMMED="${BATS_TEST_DIRNAME%/}"
+SCRIPT_DIR="$(cd "$(dirname "${BATS_TEST_DIRNAME_TRIMMED}")/.." && pwd)/scripts"
 
 @test "config loader reads default config" {
   export CONFIG_FILE="config/default.conf"

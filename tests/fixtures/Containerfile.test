@@ -1,0 +1,9 @@
+# Minimal Containerfile for testing build pipeline
+FROM quay.io/centos/centos:stream9
+
+LABEL org.opencontainers.image.title="Nornnet Test"
+LABEL org.opencontainers.image.version="0.0.1-test"
+LABEL containers.bootc="1"
+LABEL ostree.bootable="1"
+
+RUN echo "test" > /test-fixture
