@@ -4,6 +4,29 @@
 
 Credentials are stored in `.env` (see `.env` file for `GITHUB_TOKEN`).
 
+## Remote Testing Server (Hetzner)
+
+For testing workloads that require real podman/bootc (sandbox limitations), use the Hetzner server:
+
+**Environment Variables** (stored in `.env`):
+- `HETZNER_API_TOKEN` - Hetzner API token
+- `HETZNER_SERVER_SSH_KEY` - SSH private key for server access
+- `HETZNER_SERVER_SSH_PUBKEY` - SSH public key
+- `HETZNER_SERVER_SSH_KEY_NAME` - Key name in Hetzner console
+
+**Server Details**:
+- SSH: `ssh -o StrictHostKeyChecking=no -i ~/.ssh/hetzner_ed25519 root@<server-ip>`
+- The server runs podman/bootc for integration testing
+
+**Usage**:
+```bash
+# SSH to test server
+ssh -i ~/.ssh/hetzner_ed25519 root@<server-ip>
+
+# Run acceptance tests remotely
+ssh -i ~/.ssh/hetzner_ed25519 root@<server-ip> "cd /root/nornnet && bats tests/acceptance/"
+```
+
 **Token Scope**: `repo`, `write:packages`, `delete:packages`, `workflow`
 
 ---
