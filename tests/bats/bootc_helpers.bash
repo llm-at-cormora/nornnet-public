@@ -170,10 +170,15 @@ bootc_current_version() {
 
 # Check if a rollback/staged image is available
 # Returns 0 if rollback is available, 1 if not
+# Handles both older bootc format (.rollback, .staged) and bootc 1.14.1 format (.status.rollback, .status.staged)
 bootc_has_rollback() {
   local status
   status="$(bootc_status)" || return 1
-  echo "$status" | jq -e '.rollback != null or .staged != null or (.type == "rollback")' >/dev/null 2>&1
+  # Check legacy format
+  echo "$status" | jq -e '.rollback != null or .staged != null or (.type == "rollback")' >/dev/null 2>&1 && return 0
+  # Check bootc 1.14.1 format
+  echo "$status" | jq -e '.status.rollback != null or .status.staged != null' >/dev/null 2>&1 && return 0
+  return 1
 }
 
 # Export functions for use in bats tests
@@ -192,3 +197,4 @@ export -f bootc_cmd
 export -f bootc_current_image
 export -f bootc_current_version
 export -f bootc_has_rollback
+export -f bootc_skip_if_no_rollback
