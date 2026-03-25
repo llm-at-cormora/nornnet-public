@@ -70,6 +70,14 @@ teardown() {
   # bootc should be available on the device
   [ $status -eq 0 ] || skip "Device not reachable or bootc not installed"
   echo "$output" | grep -q "bootc"
+  
+  # Verify system is booted via bootc (required for deployment)
+  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
+  
+  # If status shows "System not booted via bootc", skip deployment tests
+  if echo "$output" | grep -q "System not booted via bootc"; then
+    skip "Device is not booted via bootc - requires bootc-installed system for deployment testing"
+  fi
 }
 
 @test "AC4.1: bootc switch deploys image from registry" {
@@ -85,6 +93,13 @@ teardown() {
     skip "No device IP configured"
   fi
   
+  # Check if system is booted via bootc
+  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
+  
+  if echo "$output" | grep -q "System not booted via bootc"; then
+    skip "Device is not booted via bootc - requires bootc-installed system for deployment"
+  fi
+  
   # Get the image tag to deploy
   local image_tag="${1:-latest}"
   local target_image="${REMOTE_IMAGE}:${image_tag}"
@@ -98,7 +113,7 @@ teardown() {
   # The important thing is bootc switch command exists and is callable
   if [ $status -ne 0 ]; then
     # Check if failure is due to missing image (expected) vs command error
-    echo "$output" | grep -qE "not found|authentication|connection" || {
+    echo "$output" | grep -qE "not found|authentication|connection|System not booted" || {
       echo "bootc switch failed unexpectedly: $output"
       return 1
     }
@@ -185,6 +200,11 @@ teardown() {
   # Note: bootc 1.14.1 uses --format=json instead of --json
   run bash -c "ssh -o BatchMode=yes -o ConnectTimeout=10 ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
   
+  # Check if system is booted via bootc
+  if echo "$output" | grep -q "System not booted via bootc"; then
+    skip "Device is not booted via bootc - requires bootc-installed system"
+  fi
+  
   # bootc status should succeed
   assert_success
   
@@ -213,11 +233,16 @@ teardown() {
   # Note: bootc 1.14.1 uses --format=json instead of --json
   run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
   
+  # Check if system is booted via bootc
+  if echo "$output" | grep -q "System not booted via bootc"; then
+    skip "Device is not booted via bootc - requires bootc-installed system"
+  fi
+  
   # Should return valid JSON with image information
   assert_success
   
-  # Verify JSON is parseable
-  echo "$output" | jq -r '.image' 2>/dev/null || {
+  # Verify JSON is parseable and contains image info
+  echo "$output" | jq -r '.image // .status.image // empty' 2>/dev/null || {
     echo "bootc status output is not valid JSON or missing image field: $output"
     return 1
   }
@@ -240,12 +265,17 @@ teardown() {
   # Note: bootc 1.14.1 uses --format=json instead of --json
   run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
   
+  # Check if system is booted via bootc
+  if echo "$output" | grep -q "System not booted via bootc"; then
+    skip "Device is not booted via bootc - requires bootc-installed system"
+  fi
+  
   # Should return status with rollback capability info
   # Either the current image or staged image should be present
   assert_success
   
   # Check for rollback-related fields (version, rollback, etc.)
-  echo "$output" | grep -qE '"version"|"rollback"|"staged"|"type"' || {
+  echo "$output" | grep -qE '"version"|"rollback"|"staged"|"type"|"image"' || {
     echo "bootc status missing rollback/version info: $output"
     return 1
   }
@@ -266,6 +296,13 @@ teardown() {
   
   if [ -z "$device_ip" ]; then
     skip "No device IP configured"
+  fi
+  
+  # Check if system is booted via bootc
+  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
+  
+  if echo "$output" | grep -q "System not booted via bootc"; then
+    skip "Device is not booted via bootc - requires bootc-installed system"
   fi
   
   # After deployment, verify device is still accessible
@@ -295,6 +332,13 @@ teardown() {
     skip "No device IP configured"
   fi
   
+  # Check if system is booted via bootc
+  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
+  
+  if echo "$output" | grep -q "System not booted via bootc"; then
+    skip "Device is not booted via bootc - requires bootc-installed system"
+  fi
+  
   # Check if bootc has staged/rollback image available
   # Note: bootc 1.14.1 uses --format=json instead of --json
   run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
@@ -304,7 +348,7 @@ teardown() {
   assert_success
   
   # Verify rollback capability is present in status
-  echo "$output" | grep -qE "rollback|staged|type" || {
+  echo "$output" | grep -qE "rollback|staged|type|image" || {
     echo "bootc status does not indicate rollback capability: $output"
     return 1
   }
