@@ -97,8 +97,9 @@ teardown() {
   # If it fails due to auth or network, that's expected without valid image
   # The important thing is bootc switch command exists and is callable
   if [ $status -ne 0 ]; then
-    # Check if failure is due to missing image (expected) vs command error
-    echo "$output" | grep -qE "not found|authentication|connection|System not booted" || {
+    # Check if failure is due to missing image or auth (expected) vs command error
+    # quay.io returns "unauthorized: invalid username/password" without credentials
+    echo "$output" | grep -qE "not found|authentication|connection|System not booted|unauthorized" || {
       echo "bootc switch failed unexpectedly: $output"
       return 1
     }
