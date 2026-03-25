@@ -1,8 +1,20 @@
 # Agent Instructions
 
+## Repository Setup
+
+**Working Repository**: `https://github.com/llm-at-cormora/nornnet-public`
+- All development work takes place here
+- This is the `origin` remote
+
+**Governance Repository**: `https://github.com/OS2sandbox/nornnet`
+- Governance-only repo (for org policies, issues, discussions)
+- Not used for development
+
 ## GitHub Credentials
 
 Credentials are stored in `.env` (see `.env` file for `GITHUB_TOKEN`).
+- Token scope: `llm-at-cormora` account
+- All pushes go to `llm-at-cormora/nornnet-public`
 
 ## Remote Testing Server (Hetzner)
 
