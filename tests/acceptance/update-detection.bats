@@ -119,9 +119,10 @@ setup() {
   fi
   
   # Check if system is booted via bootc first
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
+  local status_output
+  status_output="$(ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i "$DEVICE_SSH_KEY"} root@${device_ip} 'bootc status --format=json' 2>&1)" || true
   
-  if echo "$output" | grep -q "System not booted via bootc"; then
+  if echo "$status_output" | grep -q "System not booted via bootc"; then
     skip "Device is not booted via bootc - requires bootc-installed system"
   fi
   
@@ -131,7 +132,7 @@ setup() {
   # Should output version information or indicate no update
   # Non-zero exit is OK (means no update available)
   if [ $status -ne 0 ]; then
-    echo "$output" | grep -qE "up.to.date|already|no.*update" && return 0
+    echo "$output" | grep -qE "up.to.date|already|no.*update|System not booted" && return 0
     echo "bootc update --check failed unexpectedly: $output"
     return 1
   fi

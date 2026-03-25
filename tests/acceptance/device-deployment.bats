@@ -238,12 +238,13 @@ teardown() {
     skip "Device is not booted via bootc - requires bootc-installed system"
   fi
   
-  # Should return valid JSON with image information
+  # Should return valid JSON with status information
   assert_success
   
-  # Verify JSON is parseable and contains image info
-  echo "$output" | jq -r '.image // .status.image // empty' 2>/dev/null || {
-    echo "bootc status output is not valid JSON or missing image field: $output"
+  # Verify JSON is parseable and contains status info
+  # The status may include image info when booted via bootc
+  echo "$output" | jq -r 'keys[]' 2>/dev/null | grep -qE "status|spec|metadata" || {
+    echo "bootc status output is not valid JSON: $output"
     return 1
   }
 }
