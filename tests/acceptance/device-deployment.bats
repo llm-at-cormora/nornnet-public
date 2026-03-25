@@ -241,10 +241,15 @@ teardown() {
   # Should return valid JSON with status information
   assert_success
   
-  # Verify JSON is parseable and contains status info
-  # The status may include image info when booted via bootc
-  echo "$output" | jq -r 'keys[]' 2>/dev/null | grep -qE "status|spec|metadata" || {
+  # Verify JSON is parseable
+  echo "$output" | jq '.' >/dev/null 2>&1 || {
     echo "bootc status output is not valid JSON: $output"
+    return 1
+  }
+  
+  # Verify it contains expected fields
+  echo "$output" | grep -qE '"apiVersion"|"kind"|"BootcHost"' || {
+    echo "bootc status output missing expected fields: $output"
     return 1
   }
 }
