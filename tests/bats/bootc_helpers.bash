@@ -181,6 +181,14 @@ bootc_has_rollback() {
   return 1
 }
 
+# Skip test if no rollback is available on the device
+# Use this for tests that require rollback capability
+bootc_skip_if_no_rollback() {
+  if ! bootc_has_rollback; then
+    skip "No rollback available on device (rollback and staged are null). Rollback requires having a previous deployment to roll back to."
+  fi
+}
+
 # Export functions for use in bats tests
 export -f bootc_device_host
 export -f bootc_device_ssh_key
