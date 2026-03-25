@@ -1,0 +1,13 @@
+# bootc-image-builder container for building ISO images
+# Based on the official bootc-image-builder approach
+
+FROM quay.io/centos-bootc/bootc-image-builder:latest
+
+# Install required tools
+RUN dnf install -y \
+    git \
+    podman \
+    && dnf clean all
+
+# Set up working directory
+WORKDIR /workspace

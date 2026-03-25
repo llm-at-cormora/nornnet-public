@@ -8,3 +8,7 @@
 .env
 .env.local
 .env.*.local
+
+# Bootable ISO images
+*.iso
+bootc-iso-builder/output/*.iso
