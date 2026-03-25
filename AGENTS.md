@@ -16,28 +16,49 @@ Credentials are stored in `.env` (see `.env` file for `GITHUB_TOKEN`).
 - Token scope: `llm-at-cormora` account
 - All pushes go to `llm-at-cormora/nornnet-public`
 
-## Remote Testing Server (Hetzner)
+## Remote Testing Infrastructure (Hetzner)
 
-For testing workloads that require real podman/bootc (sandbox limitations), use the Hetzner server:
+### Build Server (for running tests)
+- **Host**: `46.224.173.88` (nornnet-build-temp)
+- **Purpose**: Run acceptance tests, build bootc images
+- **Tools**: podman, git, bats
+- **SSH**: `ssh -i ~/.ssh/hetzner_ed25519 root@46.224.173.88`
 
-**Environment Variables** (stored in `.env`):
-- `HETZNER_API_TOKEN` - Hetzner API token
-- `HETZNER_SERVER_SSH_KEY` - SSH private key for server access
-- `HETZNER_SERVER_SSH_PUBKEY` - SSH public key
-- `HETZNER_SERVER_SSH_KEY_NAME` - Key name in Hetzner console
+### Bootc Device (for device deployment tests)
+- **Host**: `46.224.174.46` (nornnet-bootc)
+- **Purpose**: Dedicated bootc-managed server for testing US4/US5
+- **Status**: Properly booted via bootc (running `quay.io/fedora/fedora-bootc:42`)
+- **SSH**: `ssh -i ~/.ssh/hetzner_ed25519 root@46.224.174.46`
 
-**Server Details**:
-- SSH: `ssh -o StrictHostKeyChecking=no -i ~/.ssh/hetzner_ed25519 root@<server-ip>`
-- The server runs podman/bootc for integration testing
+### Environment Variables for Testing
 
-**Usage**:
 ```bash
-# SSH to test server
-ssh -i ~/.ssh/hetzner_ed25519 root@<server-ip>
+# Bootc device configuration
+export BOOTC_DEVICE_HOST=46.224.174.46
+export BOOTC_DEVICE_SSH_KEY=~/.ssh/hetzner_ed25519
 
-# Run acceptance tests remotely
-ssh -i ~/.ssh/hetzner_ed25519 root@<server-ip> "cd /root/nornnet && bats tests/acceptance/"
+# Build/test server (where tests run)
+export HETZNER_SERVER_IP=46.224.173.88
+export DEVICE_SSH_KEY=~/.ssh/hetzner_ed25519
 ```
+
+### Running Tests
+
+```bash
+# SSH to build server with keys
+ssh -i ~/.ssh/hetzner_ed25519 root@46.224.173.88
+
+# On build server:
+export BOOTC_DEVICE_HOST=46.224.174.46
+export BOOTC_DEVICE_SSH_KEY=/root/.ssh/hetzner_ed25519
+cd /root/nornnet
+git pull origin main
+bats tests/acceptance/
+```
+
+### Hetzner API Credentials (stored in `.env`)
+- `HETZNER_API_TOKEN` - Hetzner API token
+- `HETZNER_SERVER_SSH_KEY_NAME` - Key name in Hetzner console
 
 **Token Scope**: `repo`, `write:packages`, `delete:packages`, `workflow`
 
