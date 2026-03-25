@@ -8,18 +8,21 @@
 #        Then system reports no updates available
 # AC5.3: Given multiple versions in registry, When querying available versions,
 #        Then system reports correct latest version
+#
+# Environment Setup:
+# These tests require a bootc-managed device. Set BOOTC_DEVICE_HOST (and optionally
+# BOOTC_DEVICE_SSH_KEY) to configure. See tests/bats/bootc_helpers.bash for details.
 
 load '../bats/common.bash'
 load '../bats/fixtures.bash'
 load '../bats/ci_helpers.bash'
+load '../bats/bootc_helpers.bash'
 
 # Test configuration
 REGISTRY="${REGISTRY:-ghcr.io}"
 NAMESPACE="${NAMESPACE:-llm-at-cormora}"
 IMAGE_NAME="${IMAGE_NAME:-nornnet}"
 REMOTE_IMAGE="${REGISTRY}/${NAMESPACE}/${IMAGE_NAME}"
-DEVICE_HOST="${DEVICE_HOST:-}"
-DEVICE_SSH_KEY="${DEVICE_SSH_KEY:-}"
 
 setup() {
   ci_skip_if_unavailable "podman" "podman required for update detection tests"
@@ -29,10 +32,9 @@ setup() {
     skip "podman not functional in this environment"
   fi
   
-  # Update detection tests require device connectivity
-  if [ -z "$DEVICE_HOST" ] && [ -z "${HETZNER_SERVER_IP:-}" ]; then
-    skip "No device host configured (DEVICE_HOST or HETZNER_SERVER_IP not set)"
-  fi
+  # Bootc device tests require a configured bootc device
+  # This will skip all tests in this file if no bootc device is configured
+  bootc_skip_if_not_configured
 }
 
 # =============================================================================
@@ -46,21 +48,11 @@ setup() {
   
   skip_if_tool_not_available "podman"
   
-  local device_ip="${DEVICE_HOST:-${HETZNER_SERVER_IP:-}}"
-  
-  if [ -z "$device_ip" ]; then
-    skip "No device IP configured"
-  fi
-  
-  # Check if system is booted via bootc first
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
-  
-  if echo "$output" | grep -q "System not booted via bootc"; then
-    skip "Device is not booted via bootc - requires bootc-installed system"
-  fi
+  # Verify system is booted via bootc
+  bootc_skip_if_not_bootc_system
   
   # Run bootc update --check on the device
-  run bash -c "ssh -o BatchMode=yes -o ConnectTimeout=30 ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc update --check 2>&1' 2>&1"
+  run bash -c "ssh $(bootc_ssh_opts) 'bootc update --check 2>&1' 2>&1"
   
   # The command should succeed (exit 0) when booted via bootc
   # May still fail if no update available or network issues
@@ -78,21 +70,11 @@ setup() {
   
   skip_if_tool_not_available "podman"
   
-  local device_ip="${DEVICE_HOST:-${HETZNER_SERVER_IP:-}}"
-  
-  if [ -z "$device_ip" ]; then
-    skip "No device IP configured"
-  fi
-  
-  # Check if system is booted via bootc first
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
-  
-  if echo "$output" | grep -q "System not booted via bootc"; then
-    skip "Device is not booted via bootc - requires bootc-installed system"
-  fi
+  # Verify system is booted via bootc
+  bootc_skip_if_not_bootc_system
   
   # Run update check
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc update --check 2>&1' 2>&1"
+  run bash -c "ssh $(bootc_ssh_opts) 'bootc update --check 2>&1' 2>&1"
   
   # Check output for update availability indicator
   # Should indicate whether update is available or not
@@ -112,22 +94,11 @@ setup() {
   
   skip_if_tool_not_available "podman"
   
-  local device_ip="${DEVICE_HOST:-${HETZNER_SERVER_IP:-}}"
-  
-  if [ -z "$device_ip" ]; then
-    skip "No device IP configured"
-  fi
-  
-  # Check if system is booted via bootc first
-  local status_output
-  status_output="$(ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i "$DEVICE_SSH_KEY"} root@${device_ip} 'bootc status --format=json' 2>&1)" || true
-  
-  if echo "$status_output" | grep -q "System not booted via bootc"; then
-    skip "Device is not booted via bootc - requires bootc-installed system"
-  fi
+  # Verify system is booted via bootc
+  bootc_skip_if_not_bootc_system
   
   # Run update check (bootc 1.14.1 does not support --format=json for update)
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc update --check 2>&1' 2>&1"
+  run bash -c "ssh $(bootc_ssh_opts) 'bootc update --check 2>&1' 2>&1"
   
   # Should output version information or indicate no update
   # Non-zero exit is OK (means no update available)
@@ -151,20 +122,12 @@ setup() {
   
   skip_if_tool_not_available "podman"
   
-  local device_ip="${DEVICE_HOST:-${HETZNER_SERVER_IP:-}}"
-  
-  if [ -z "$device_ip" ]; then
-    skip "No device IP configured"
-  fi
+  # Verify system is booted via bootc
+  bootc_skip_if_not_bootc_system
   
   # Check device configuration
   # Note: bootc 1.14.1 uses --format=json instead of --json
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json 2>&1' 2>&1"
-  
-  # Check if system is booted via bootc
-  if echo "$output" | grep -q "System not booted via bootc"; then
-    skip "Device is not booted via bootc - requires bootc-installed system"
-  fi
+  run bash -c "ssh $(bootc_ssh_opts) 'bootc status --format=json 2>&1' 2>&1"
   
   # Should show the configured image origin or system info
   assert_success
@@ -187,21 +150,11 @@ setup() {
   
   skip_if_tool_not_available "podman"
   
-  local device_ip="${DEVICE_HOST:-${HETZNER_SERVER_IP:-}}"
-  
-  if [ -z "$device_ip" ]; then
-    skip "No device IP configured"
-  fi
-  
-  # Check if system is booted via bootc first
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
-  
-  if echo "$output" | grep -q "System not booted via bootc"; then
-    skip "Device is not booted via bootc - requires bootc-installed system"
-  fi
+  # Verify system is booted via bootc
+  bootc_skip_if_not_bootc_system
   
   # Run update check
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc update --check 2>&1' 2>&1"
+  run bash -c "ssh $(bootc_ssh_opts) 'bootc update --check 2>&1' 2>&1"
   
   # When no updates available, bootc should exit with non-zero
   # and output should indicate system is up to date
@@ -226,30 +179,20 @@ setup() {
   
   skip_if_tool_not_available "podman"
   
-  local device_ip="${DEVICE_HOST:-${HETZNER_SERVER_IP:-}}"
-  
-  if [ -z "$device_ip" ]; then
-    skip "No device IP configured"
-  fi
-  
-  # Check if system is booted via bootc first
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
-  
-  if echo "$output" | grep -q "System not booted via bootc"; then
-    skip "Device is not booted via bootc - requires bootc-installed system"
-  fi
+  # Verify system is booted via bootc
+  bootc_skip_if_not_bootc_system
   
   # Get current version from device
   # Note: bootc 1.14.1 uses --format=json instead of --json
   local current_version
-  current_version="$(bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json 2>&1' 2>&1" | jq -r '.version // .image.version // .status.version // empty' 2>/dev/null)" || true
+  current_version="$(bash -c "ssh $(bootc_ssh_opts) 'bootc status --format=json 2>&1' 2>&1" | jq -r '.version // .image.version // .status.version // empty' 2>/dev/null)" || true
   
   if [ -z "$current_version" ]; then
     skip "Could not determine current device version"
   fi
   
   # Check update status
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc update --check 2>&1' 2>&1"
+  run bash -c "ssh $(bootc_ssh_opts) 'bootc update --check 2>&1' 2>&1"
   
   # Should correctly compare versions
   # If device is on latest, should report no update
@@ -266,14 +209,11 @@ setup() {
   
   skip_if_tool_not_available "podman"
   
-  local device_ip="${DEVICE_HOST:-${HETZNER_SERVER_IP:-}}"
-  
-  if [ -z "$device_ip" ]; then
-    skip "No device IP configured"
-  fi
+  # Verify system is booted via bootc
+  bootc_skip_if_not_bootc_system
   
   # Check if timer/unit exists for update checks
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'systemctl list-timers bootc-update.timer 2>&1 || systemctl list-timers | grep -i bootc 2>&1 || echo no-timer' 2>&1"
+  run bash -c "ssh $(bootc_ssh_opts) 'systemctl list-timers bootc-update.timer 2>&1 || systemctl list-timers | grep -i bootc 2>&1 || echo no-timer' 2>&1"
   
   # Either timer exists or periodic checks are configured another way
   # This test verifies the feature exists
@@ -393,22 +333,12 @@ setup() {
   
   skip_if_tool_not_available "podman"
   
-  local device_ip="${DEVICE_HOST:-${HETZNER_SERVER_IP:-}}"
-  
-  if [ -z "$device_ip" ]; then
-    skip "No device IP configured"
-  fi
-  
-  # Check if system is booted via bootc first
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
-  
-  if echo "$output" | grep -q "System not booted via bootc"; then
-    skip "Device is not booted via bootc - requires bootc-installed system"
-  fi
+  # Verify system is booted via bootc
+  bootc_skip_if_not_bootc_system
   
   # Check device status for version tracking configuration
   # Note: bootc 1.14.1 uses --format=json instead of --json
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json 2>&1' 2>&1"
+  run bash -c "ssh $(bootc_ssh_opts) 'bootc status --format=json 2>&1' 2>&1"
   
   assert_success
   
@@ -426,23 +356,13 @@ setup() {
   
   skip_if_tool_not_available "podman"
   
-  local device_ip="${DEVICE_HOST:-${HETZNER_SERVER_IP:-}}"
-  
-  if [ -z "$device_ip" ]; then
-    skip "No device IP configured"
-  fi
-  
-  # Check if system is booted via bootc first
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
-  
-  if echo "$output" | grep -q "System not booted via bootc"; then
-    skip "Device is not booted via bootc - requires bootc-installed system"
-  fi
+  # Verify system is booted via bootc
+  bootc_skip_if_not_bootc_system
   
   # Check if previous versions are available
   # Note: ostree admin may not be available in all bootc installations
   # Fall back to bootc status if ostree admin is not available
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'ostree admin status 2>&1 || bootc status --format=json 2>&1' 2>&1"
+  run bash -c "ssh $(bootc_ssh_opts) 'ostree admin status 2>&1 || bootc status --format=json 2>&1' 2>&1"
   
   # Should show deployment list including rollback option
   # This indicates system can rollback to previous version

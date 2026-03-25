@@ -8,18 +8,21 @@
 #        Then status shows newly deployed image
 # AC4.3: Given deployment in progress, When process completes,
 #        Then device is in consistent bootable state
+#
+# Environment Setup:
+# These tests require a bootc-managed device. Set BOOTC_DEVICE_HOST (and optionally
+# BOOTC_DEVICE_SSH_KEY) to configure. See tests/bats/bootc_helpers.bash for details.
 
 load '../bats/common.bash'
 load '../bats/fixtures.bash'
 load '../bats/ci_helpers.bash'
+load '../bats/bootc_helpers.bash'
 
 # Test configuration
 REGISTRY="${REGISTRY:-ghcr.io}"
 NAMESPACE="${NAMESPACE:-llm-at-cormora}"
 IMAGE_NAME="${IMAGE_NAME:-nornnet}"
 REMOTE_IMAGE="${REGISTRY}/${NAMESPACE}/${IMAGE_NAME}"
-DEVICE_HOST="${DEVICE_HOST:-}"
-DEVICE_SSH_KEY="${DEVICE_SSH_KEY:-}"
 
 setup() {
   ci_skip_if_unavailable "podman" "podman required for device deployment tests"
@@ -29,10 +32,9 @@ setup() {
     skip "podman not functional in this environment"
   fi
   
-  # Device deployment tests require Hetzner server connectivity
-  if [ -z "$DEVICE_HOST" ] && [ -z "${HETZNER_SERVER_IP:-}" ]; then
-    skip "No device host configured (DEVICE_HOST or HETZNER_SERVER_IP not set)"
-  fi
+  # Bootc device tests require a configured bootc device
+  # This will skip all tests in this file if no bootc device is configured
+  bootc_skip_if_not_configured
   
   # Create test fixture for deployment verification
   BATS_TMPDIR="${BATS_TMPDIR:-/tmp}"
@@ -58,26 +60,19 @@ teardown() {
   
   # This test verifies the deployment target is accessible
   # The actual bootc commands run on the remote device via SSH
-  local device_ip="${DEVICE_HOST:-${HETZNER_SERVER_IP:-}}"
-  
-  if [ -z "$device_ip" ]; then
-    skip "No device IP configured"
-  fi
   
   # Verify SSH connectivity to device
-  run bash -c "ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc --version' 2>&1"
+  run bash -c "ssh $(bootc_ssh_opts) 'bootc --version' 2>&1"
   
   # bootc should be available on the device
   [ $status -eq 0 ] || skip "Device not reachable or bootc not installed"
   echo "$output" | grep -q "bootc"
   
   # Verify system is booted via bootc (required for deployment)
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
+  run bash -c "ssh $(bootc_ssh_opts) 'bootc status --format=json' 2>&1"
   
   # If status shows "System not booted via bootc", skip deployment tests
-  if echo "$output" | grep -q "System not booted via bootc"; then
-    skip "Device is not booted via bootc - requires bootc-installed system for deployment testing"
-  fi
+  bootc_skip_if_not_bootc_system
 }
 
 @test "AC4.1: bootc switch deploys image from registry" {
@@ -87,18 +82,8 @@ teardown() {
   
   skip_if_tool_not_available "podman"
   
-  local device_ip="${DEVICE_HOST:-${HETZNER_SERVER_IP:-}}"
-  
-  if [ -z "$device_ip" ]; then
-    skip "No device IP configured"
-  fi
-  
-  # Check if system is booted via bootc
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
-  
-  if echo "$output" | grep -q "System not booted via bootc"; then
-    skip "Device is not booted via bootc - requires bootc-installed system for deployment"
-  fi
+  # Verify system is booted via bootc
+  bootc_skip_if_not_bootc_system
   
   # Get the image tag to deploy
   local image_tag="${1:-latest}"
@@ -106,7 +91,7 @@ teardown() {
   
   # Run bootc switch on remote device
   # Note: bootc 1.14.1 does not support --disable-fsync flag
-  run bash -c "ssh -o BatchMode=yes -o ConnectTimeout=30 -o StrictHostKeyChecking=no ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc switch ${target_image}' 2>&1" || true
+  run bash -c "ssh -o BatchMode=yes -o ConnectTimeout=30 -o StrictHostKeyChecking=no $(bootc_ssh_opts) 'bootc switch ${target_image}' 2>&1" || true
   
   # Deployment should succeed (exit 0)
   # If it fails due to auth or network, that's expected without valid image
@@ -127,11 +112,8 @@ teardown() {
   
   skip_if_tool_not_available "podman"
   
-  local device_ip="${DEVICE_HOST:-${HETZNER_SERVER_IP:-}}"
-  
-  if [ -z "$device_ip" ]; then
-    skip "No device IP configured"
-  fi
+  # Verify system is booted via bootc
+  bootc_skip_if_not_bootc_system
   
   # Start deployment in background and capture output
   local target_image="${REMOTE_IMAGE}:latest"
@@ -139,8 +121,7 @@ teardown() {
   
   # Run deployment and capture output
   # Note: bootc 1.14.1 does not support --disable-fsync flag
-  timeout 120 ssh -o BatchMode=yes -o ConnectTimeout=30 ${DEVICE_SSH_KEY:+-i "$DEVICE_SSH_KEY"} \
-    root@"${device_ip}" \
+  timeout 120 ssh -o BatchMode=yes -o ConnectTimeout=30 -o StrictHostKeyChecking=no $(bootc_ssh_opts) \
     "bootc switch ${target_image} 2>&1" \
     > "$output_file" || true
   
@@ -165,14 +146,11 @@ teardown() {
   
   skip_if_tool_not_available "podman"
   
-  local device_ip="${DEVICE_HOST:-${HETZNER_SERVER_IP:-}}"
-  
-  if [ -z "$device_ip" ]; then
-    skip "No device IP configured"
-  fi
+  # Verify system is booted via bootc
+  bootc_skip_if_not_bootc_system
   
   # Verify device has authentication configured for the registry
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'cat /etc/containers/registries.conf 2>/dev/null || podman login --get-login ${REGISTRY}' 2>&1"
+  run bash -c "ssh $(bootc_ssh_opts) 'cat /etc/containers/registries.conf 2>/dev/null || podman login --get-login ${REGISTRY}' 2>&1"
   
   # Should either have registry config or be logged in
   # This test will fail until implementation exists
@@ -190,20 +168,12 @@ teardown() {
   
   skip_if_tool_not_available "podman"
   
-  local device_ip="${DEVICE_HOST:-${HETZNER_SERVER_IP:-}}"
-  
-  if [ -z "$device_ip" ]; then
-    skip "No device IP configured"
-  fi
+  # Verify system is booted via bootc
+  bootc_skip_if_not_bootc_system
   
   # Get bootc status from device
   # Note: bootc 1.14.1 uses --format=json instead of --json
-  run bash -c "ssh -o BatchMode=yes -o ConnectTimeout=10 ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
-  
-  # Check if system is booted via bootc
-  if echo "$output" | grep -q "System not booted via bootc"; then
-    skip "Device is not booted via bootc - requires bootc-installed system"
-  fi
+  run bash -c "ssh $(bootc_ssh_opts) 'bootc status --format=json' 2>&1"
   
   # bootc status should succeed
   assert_success
@@ -223,20 +193,12 @@ teardown() {
   
   skip_if_tool_not_available "podman"
   
-  local device_ip="${DEVICE_HOST:-${HETZNER_SERVER_IP:-}}"
-  
-  if [ -z "$device_ip" ]; then
-    skip "No device IP configured"
-  fi
+  # Verify system is booted via bootc
+  bootc_skip_if_not_bootc_system
   
   # Get status in JSON format for parsing
   # Note: bootc 1.14.1 uses --format=json instead of --json
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
-  
-  # Check if system is booted via bootc
-  if echo "$output" | grep -q "System not booted via bootc"; then
-    skip "Device is not booted via bootc - requires bootc-installed system"
-  fi
+  run bash -c "ssh $(bootc_ssh_opts) 'bootc status --format=json' 2>&1"
   
   # Should return valid JSON with status information
   assert_success
@@ -256,20 +218,12 @@ teardown() {
   
   skip_if_tool_not_available "podman"
   
-  local device_ip="${DEVICE_HOST:-${HETZNER_SERVER_IP:-}}"
-  
-  if [ -z "$device_ip" ]; then
-    skip "No device IP configured"
-  fi
+  # Verify system is booted via bootc
+  bootc_skip_if_not_bootc_system
   
   # Check status includes rollback/staged information
   # Note: bootc 1.14.1 uses --format=json instead of --json
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
-  
-  # Check if system is booted via bootc
-  if echo "$output" | grep -q "System not booted via bootc"; then
-    skip "Device is not booted via bootc - requires bootc-installed system"
-  fi
+  run bash -c "ssh $(bootc_ssh_opts) 'bootc status --format=json' 2>&1"
   
   # Should return status with rollback capability info
   # Either the current image or staged image should be present
@@ -293,28 +247,18 @@ teardown() {
   
   skip_if_tool_not_available "podman"
   
-  local device_ip="${DEVICE_HOST:-${HETZNER_SERVER_IP:-}}"
-  
-  if [ -z "$device_ip" ]; then
-    skip "No device IP configured"
-  fi
-  
-  # Check if system is booted via bootc
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
-  
-  if echo "$output" | grep -q "System not booted via bootc"; then
-    skip "Device is not booted via bootc - requires bootc-installed system"
-  fi
+  # Verify system is booted via bootc
+  bootc_skip_if_not_bootc_system
   
   # After deployment, verify device is still accessible
   # This confirms the system is in a consistent bootable state
-  run bash -c "ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'hostname' 2>&1"
+  run bash -c "ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no $(bootc_ssh_opts) 'hostname' 2>&1"
   
   # Device should be reachable
   assert_success
   
   # Verify bootc can still report status
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status' 2>&1"
+  run bash -c "ssh $(bootc_ssh_opts) 'bootc status' 2>&1"
   
   # Status should work - system is consistent
   assert_success
@@ -327,22 +271,12 @@ teardown() {
   
   skip_if_tool_not_available "podman"
   
-  local device_ip="${DEVICE_HOST:-${HETZNER_SERVER_IP:-}}"
-  
-  if [ -z "$device_ip" ]; then
-    skip "No device IP configured"
-  fi
-  
-  # Check if system is booted via bootc
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
-  
-  if echo "$output" | grep -q "System not booted via bootc"; then
-    skip "Device is not booted via bootc - requires bootc-installed system"
-  fi
+  # Verify system is booted via bootc
+  bootc_skip_if_not_bootc_system
   
   # Check if bootc has staged/rollback image available
   # Note: bootc 1.14.1 uses --format=json instead of --json
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json' 2>&1"
+  run bash -c "ssh $(bootc_ssh_opts) 'bootc status --format=json' 2>&1"
   
   # Status should show there's a rollback option available
   # This could be "rollback" field or "staged" image
@@ -362,14 +296,11 @@ teardown() {
   
   skip_if_tool_not_available "podman"
   
-  local device_ip="${DEVICE_HOST:-${HETZNER_SERVER_IP:-}}"
-  
-  if [ -z "$device_ip" ]; then
-    skip "No device IP configured"
-  fi
+  # Verify system is booted via bootc
+  bootc_skip_if_not_bootc_system
   
   # Check journal for bootc deployment entries
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'journalctl -u bootc-switch --no-pager -n 50' 2>&1"
+  run bash -c "ssh $(bootc_ssh_opts) 'journalctl -u bootc-switch --no-pager -n 50' 2>&1"
   
   # Should have bootc-related log entries
   # This verifies the deployment was logged properly
@@ -390,16 +321,13 @@ teardown() {
   
   skip_if_tool_not_available "podman"
   
-  local device_ip="${DEVICE_HOST:-${HETZNER_SERVER_IP:-}}"
-  
-  if [ -z "$device_ip" ]; then
-    skip "No device IP configured"
-  fi
+  # Verify system is booted via bootc
+  bootc_skip_if_not_bootc_system
   
   # Check for transaction/ostree deployment records
   # Note: ostree admin may not be available in all bootc installations
   # Fall back to bootc status if ostree admin is not available
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'ostree admin status 2>&1 || bootc status --format=json 2>&1' 2>&1"
+  run bash -c "ssh $(bootc_ssh_opts) 'ostree admin status 2>&1 || bootc status --format=json 2>&1' 2>&1"
   
   # Should show deployment status with deployment entries
   assert_success
