@@ -37,7 +37,8 @@ setup() {
   
   # Get initial state for comparison
   INITIAL_STATUS="$(bootc_ssh "bootc status --format=json" 2>&1)" || true
-  INITIAL_IMAGE="$(echo "$INITIAL_STATUS" | jq -r '.image.id // .image // empty' 2>/dev/null)" || true
+  # bootc 1.14.1: image is at status.booted.image.image
+  INITIAL_IMAGE="$(echo "$INITIAL_STATUS" | jq -r '.status.booted.image.image // .spec.image.image // .image.id // .image // empty' 2>/dev/null)" || true
 }
 
 teardown() {
@@ -81,7 +82,8 @@ teardown() {
     local after_status
     after_status="$(bootc_ssh "bootc status --format=json" 2>&1)"
     local after_image
-    after_image="$(echo "$after_status" | jq -r '.image.id // .image // empty' 2>/dev/null)" || true
+    # bootc 1.14.1: image is at status.booted.image.image
+    after_image="$(echo "$after_status" | jq -r '.status.booted.image.image // .spec.image.image // .image.id // .image // empty' 2>/dev/null)" || true
     
     # System must be in a consistent state - either:
     # 1. Image changed to new version (update succeeded)
@@ -172,8 +174,9 @@ teardown() {
   current_status="$(bootc_ssh "bootc status --format=json" 2>&1)"
   
   # Extract current image reference
+  # bootc 1.14.1: image is at status.booted.image.image
   local current_image
-  current_image="$(echo "$current_status" | jq -r '.image.id // .image // empty' 2>/dev/null)" || true
+  current_image="$(echo "$current_status" | jq -r '.status.booted.image.image // .spec.image.image // .image.id // .image // empty' 2>/dev/null)" || true
   
   # If we have a current image, verify it's valid
   if [ -n "$current_image" ]; then
@@ -208,8 +211,9 @@ teardown() {
   # Get current valid state before attempted failed update
   local before_status
   before_status="$(bootc_ssh "bootc status --format=json" 2>&1)"
+  # bootc 1.14.1: image is at status.booted.image.image
   local before_image
-  before_image="$(echo "$before_status" | jq -r '.image.id // .image // empty' 2>/dev/null)" || true
+  before_image="$(echo "$before_status" | jq -r '.status.booted.image.image // .spec.image.image // .image.id // .image // empty' 2>/dev/null)" || true
   
   # Attempt update with non-existent image tag (guaranteed to fail)
   local invalid_image="${REMOTE_IMAGE}:nonexistent-tag-$(date +%s)"
@@ -238,13 +242,15 @@ teardown() {
   }
   
   # System should either be on original image or have rollback available
+  # bootc 1.14.1: image is at status.booted.image.image, rollback at status.rollback
   local after_image
-  after_image="$(echo "$after_status" | jq -r '.image.id // .image // empty' 2>/dev/null)" || true
+  after_image="$(echo "$after_status" | jq -r '.status.booted.image.image // .spec.image.image // .image.id // .image // empty' 2>/dev/null)" || true
   
   # If rollback worked, system should be on original image
   if [ -n "$before_image" ] && [ -n "$after_image" ]; then
     # Image should match (rollback successful) or have rollback available
-    echo "$after_status" | jq -e '.rollback != null or .staged != null' >/dev/null 2>&1 || {
+    # In bootc 1.14.1: status.rollback and status.staged are the correct paths
+    echo "$after_status" | jq -e '.status.rollback != null or .status.staged != null' >/dev/null 2>&1 || {
       [ "$before_image" = "$after_image" ] || {
         echo "Rollback may not have occurred: before=$before_image, after=$after_image"
         echo "Status: $after_status"
@@ -282,12 +288,14 @@ teardown() {
   
   # System should have consistent state - either on good image or with rollback available
   # Check that system is bootable (has valid current image)
+  # bootc 1.14.1: image is at status.booted.image.image, rollback at status.rollback
   local current_image
-  current_image="$(echo "$status_after" | jq -r '.image.id // .image // empty' 2>/dev/null)" || true
+  current_image="$(echo "$status_after" | jq -r '.status.booted.image.image // .spec.image.image // .image.id // .image // empty' 2>/dev/null)" || true
   
   # If there's no current image, check if rollback field exists
   if [ -z "$current_image" ]; then
-    echo "$status_after" | jq -e '.rollback != null or .staged != null' >/dev/null 2>&1 || {
+    # In bootc 1.14.1: status.rollback and status.staged are the correct paths
+    echo "$status_after" | jq -e '.status.rollback != null or .status.staged != null' >/dev/null 2>&1 || {
       echo "System has no current image and no rollback available: $status_after"
       return 1
     }
@@ -307,8 +315,9 @@ teardown() {
   # Get initial state
   local initial_status
   initial_status="$(bootc_ssh "bootc status --format=json" 2>&1)"
+  # bootc 1.14.1: image is at status.booted.image.image
   local initial_image
-  initial_image="$(echo "$initial_status" | jq -r '.image.id // .image // empty' 2>/dev/null)" || true
+  initial_image="$(echo "$initial_status" | jq -r '.status.booted.image.image // .spec.image.image // .image.id // .image // empty' 2>/dev/null)" || true
   
   # Attempt failed update
   local fail_image="${REMOTE_IMAGE}:auto-rollback-test-$(date +%s)"
@@ -328,12 +337,14 @@ teardown() {
   }
   
   # System should have a valid image or rollback available
+  # bootc 1.14.1: image is at status.booted.image.image, rollback at status.rollback
   local recovered_image
-  recovered_image="$(echo "$recovered_status" | jq -r '.image.id // .image // empty' 2>/dev/null)" || true
+  recovered_image="$(echo "$recovered_status" | jq -r '.status.booted.image.image // .spec.image.image // .image.id // .image // empty' 2>/dev/null)" || true
   
   # System must be bootable
   [ -n "$recovered_image" ] || {
-    echo "$recovered_status" | jq -e '.rollback != null or .staged != null' >/dev/null 2>&1 || {
+    # In bootc 1.14.1: status.rollback and status.staged are the correct paths
+    echo "$recovered_status" | jq -e '.status.rollback != null or .status.staged != null' >/dev/null 2>&1 || {
       echo "No valid image or rollback after automatic recovery: $recovered_status"
       return 1
     }
@@ -410,8 +421,9 @@ teardown() {
   }
   
   # Parse image reference
+  # bootc 1.14.1: image is at status.booted.image.image
   local image
-  image="$(echo "$status" | jq -r '.image.id // .image // empty' 2>/dev/null)" || true
+  image="$(echo "$status" | jq -r '.status.booted.image.image // .spec.image.image // .image.id // .image // empty' 2>/dev/null)" || true
   
   # Image should be present and valid
   [ -n "$image" ] || {
@@ -442,7 +454,8 @@ teardown() {
   
   # Status should indicate deployment state
   # Look for fields indicating rollback capability
-  echo "$status" | jq -e '.rollback // .staged // .type // .image' >/dev/null 2>&1 || {
+  # bootc 1.14.1: status.rollback, status.staged are the correct paths
+  echo "$status" | jq -e '.status.rollback // .status.staged // .status.type // .status.booted // .rollback // .staged // .type // .image' >/dev/null 2>&1 || {
     echo "Status missing rollback/staged information: $status"
     return 1
   }
@@ -540,11 +553,13 @@ teardown() {
   }
   
   # 4. Verify system has valid image
+  # bootc 1.14.1: image is at status.booted.image.image
   local image
-  image="$(echo "$status" | jq -r '.image.id // .image // empty' 2>/dev/null)" || true
+  image="$(echo "$status" | jq -r '.status.booted.image.image // .spec.image.image // .image.id // .image // empty' 2>/dev/null)" || true
   
   [ -n "$image" ] || {
-    echo "$status" | jq -e '.rollback // .staged // .type' >/dev/null 2>&1 || {
+    # In bootc 1.14.1: status.rollback, status.staged are the correct paths
+    echo "$status" | jq -e '.status.rollback // .status.staged // .status.type // .rollback // .staged // .type' >/dev/null 2>&1 || {
       echo "No valid image or deployment info: $status"
       return 1
     }
@@ -566,8 +581,9 @@ teardown() {
   status="$(bootc_ssh "bootc status --format=json" 2>&1)"
   
   # Extract version (may be in various locations in JSON)
+  # bootc 1.14.1: version might be in status.booted.version or status.version
   local version
-  version="$(echo "$status" | jq -r '.version // .image.version // .status.version // empty' 2>/dev/null)" || true
+  version="$(echo "$status" | jq -r '.status.booted.version // .status.version // .version // .image.version // empty' 2>/dev/null)" || true
   
   # Version should be present (or system should have other identifier)
   # This verifies version reporting works post-rollback
@@ -578,7 +594,8 @@ teardown() {
     }
   else
     # If no version, system should have image ID or other identifier
-    echo "$status" | jq -e '.image // .id // .BootcHost' >/dev/null 2>&1 || {
+    # bootc 1.14.1: check for status.booted.image.image or spec.image.image
+    echo "$status" | jq -e '.status.booted // .spec.image // .image // .id // .BootcHost' >/dev/null 2>&1 || {
       echo "No version or image identifier in status: $status"
       return 1
     }

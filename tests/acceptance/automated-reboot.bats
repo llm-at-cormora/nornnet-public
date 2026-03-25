@@ -276,8 +276,9 @@ teardown() {
   }
   
   # Extract version if available
+  # bootc 1.14.1: version might be in status.booted.version or status.version
   local version
-  version="$(echo "$status" | jq -r '.version // .image.version // .status.version // empty' 2>/dev/null)" || true
+  version="$(echo "$status" | jq -r '.status.booted.version // .status.version // .version // .image.version // empty' 2>/dev/null)" || true
   
   # Version should be present or gracefully absent
   # The important thing is bootc status returns valid data
@@ -310,7 +311,8 @@ teardown() {
   assert_success
   
   # Check for rollback or previous deployment indication
-  echo "$output" | grep -qE "rollback|previous|deploy|image|type|BootcHost|staged" || {
+  # bootc 1.14.1: status.rollback and status.staged are the correct paths
+  echo "$output" | grep -qE "rollback|previous|deploy|image|type|BootcHost|staged|booted" || {
     echo "No rollback information available: $output"
     return 1
   }
