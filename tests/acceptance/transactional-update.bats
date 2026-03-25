@@ -111,10 +111,13 @@ bootc_skip_if_no_rollback() {
     }
   else
     # No update available - verify current state is valid
-    [ $update_check_status -eq 0 ] || {
-      # Non-zero is OK for "no update"
+    if [ "${update_check_status:-1}" -eq 0 ]; then
+      # Zero status - command succeeded, which is fine for "no update needed"
+      true
+    else
+      # Non-zero status - check if it's actually "no update available"
       echo "$update_check_output" | grep -qE "No changes|up.to.date|already" && return 0
-    }
+    fi
   fi
 }
 
@@ -199,7 +202,7 @@ bootc_skip_if_no_rollback() {
   # If we have a current image, verify it's valid
   if [ -n "$current_image" ]; then
     # Verify image contains registry reference or digest
-    echo "$current_image" | grep -qE "${REGISTRY}|sha256|localhost" || {
+    echo "$current_image" | grep -qE "quay.io|docker.io|localhost|sha256" || {
       echo "Current image not in expected format: $current_image"
       return 1
     }
@@ -415,7 +418,7 @@ bootc_skip_if_no_rollback() {
   }
   
   # Image should contain valid reference (registry or digest)
-  echo "$image" | grep -qE "${REGISTRY}|sha256|localhost" || {
+  echo "$image" | grep -qE "quay.io|docker.io|localhost|sha256" || {
     echo "Invalid image reference: $image"
     return 1
   }
