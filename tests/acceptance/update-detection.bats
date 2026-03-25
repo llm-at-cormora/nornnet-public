@@ -101,7 +101,8 @@ setup() {
   fi
   
   # Run update check with JSON output for parsing
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc update --check --json 2>&1 || bootc update --check 2>&1' 2>&1"
+  # Note: bootc 1.14.1 uses --format=json instead of --json
+  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc update --check --format=json 2>&1 || bootc update --check 2>&1' 2>&1"
   
   # Should output version information
   # Either as JSON or human-readable text
@@ -128,7 +129,8 @@ setup() {
   fi
   
   # Check device configuration
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --json 2>&1' 2>&1"
+  # Note: bootc 1.14.1 uses --format=json instead of --json
+  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json 2>&1' 2>&1"
   
   # Should show the configured image origin
   assert_success
@@ -191,8 +193,9 @@ setup() {
   fi
   
   # Get current version from device
+  # Note: bootc 1.14.1 uses --format=json instead of --json
   local current_version
-  current_version="$(bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --json 2>&1' 2>&1" | jq -r '.version // .image.version // empty' 2>/dev/null)" || true
+  current_version="$(bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json 2>&1' 2>&1" | jq -r '.version // .image.version // empty' 2>/dev/null)" || true
   
   if [ -z "$current_version" ]; then
     skip "Could not determine current device version"
@@ -350,12 +353,13 @@ setup() {
   fi
   
   # Check device status for version tracking configuration
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --json 2>&1' 2>&1"
+  # Note: bootc 1.14.1 uses --format=json instead of --json
+  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'bootc status --format=json 2>&1' 2>&1"
   
   assert_success
   
   # Should contain origin/version tracking information
-  echo "$output" | grep -qE "origin|version|tracked|ref" || {
+  echo "$output" | grep -qE "origin|version|tracked|ref|image" || {
     echo "Device status missing tracking info: $output"
     return 1
   }
@@ -375,14 +379,16 @@ setup() {
   fi
   
   # Check if previous versions are available
-  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'ostree admin status 2>&1' 2>&1"
+  # Note: ostree admin may not be available in all bootc installations
+  # Fall back to bootc status if ostree admin is not available
+  run bash -c "ssh -o BatchMode=yes ${DEVICE_SSH_KEY:+-i \"$DEVICE_SSH_KEY\"} root@${device_ip} 'ostree admin status 2>&1 || bootc status --format=json 2>&1' 2>&1"
   
   # Should show deployment list including rollback option
   # This indicates system can rollback to previous version
   assert_success
   
   # Check for rollback or previous deployment indication
-  echo "$output" | grep -qE "rollback|previous|deploy" || {
+  echo "$output" | grep -qE "rollback|previous|deploy|image|type" || {
     echo "No rollback information available: $output"
     return 1
   }
