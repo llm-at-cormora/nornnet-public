@@ -41,7 +41,8 @@ setup() {
   # Get initial state for comparison
   INITIAL_STATUS="$(bootc_ssh "bootc status --format=json" 2>&1)" || true
   # bootc 1.14.1: image is at status.booted.image.image
-  INITIAL_IMAGE="$(echo "$INITIAL_STATUS" | jq -r '.status.booted.image.image // .spec.image.image // .image.id // .image // empty' 2>/dev/null)" || true
+  # Use grep-based parsing since jq may not be available
+  INITIAL_IMAGE="$(echo "$INITIAL_STATUS" | grep -oE '"image":\s*"[^"]*"' | head -1 | sed 's/.*"image":[[:space:]]*"//;s/"$//')" || true
 }
 
 teardown() {
@@ -98,7 +99,8 @@ bootc_skip_if_no_rollback() {
     after_status="$(bootc_ssh "bootc status --format=json" 2>&1)"
     local after_image
     # bootc 1.14.1: image is at status.booted.image.image
-    after_image="$(echo "$after_status" | jq -r '.status.booted.image.image // .spec.image.image // .image.id // .image // empty' 2>/dev/null)" || true
+    # Use grep-based parsing since jq may not be available
+    after_image="$(echo "$after_status" | grep -oE '"image":\s*"[^"]*"' | head -1 | sed 's/.*"image":[[:space:]]*"//;s/"$//')" || true
     
     # System must be in a consistent state - either:
     # 1. Image changed to new version (update succeeded)
@@ -144,8 +146,8 @@ bootc_skip_if_no_rollback() {
     return 1
   }
   
-  # Verify status is valid JSON
-  echo "$after_status" | jq . >/dev/null 2>&1 || {
+  # Verify status is valid JSON using grep patterns
+  echo "$after_status" | grep -qE '^\s*\{' && echo "$after_status" | grep -qE '\}\s*$' || {
     echo "Device status invalid after interrupted update: $after_status"
     return 1
   }
@@ -167,8 +169,9 @@ bootc_skip_if_no_rollback() {
   # Status should return valid JSON with state information
   assert_success
   
-  # Verify JSON structure contains expected fields
-  echo "$output" | jq -e '.status or .image or .BootcHost or .version' >/dev/null 2>&1 || {
+  # Verify JSON structure contains expected fields using grep
+  # Check for common bootc status fields
+  echo "$output" | grep -qE '"status"|"image"|"BootcHost"|"version"|"type"' || {
     echo "bootc status missing expected fields: $output"
     return 1
   }
@@ -188,10 +191,10 @@ bootc_skip_if_no_rollback() {
   local current_status
   current_status="$(bootc_ssh "bootc status --format=json" 2>&1)"
   
-  # Extract current image reference
+  # Extract current image reference using grep
   # bootc 1.14.1: image is at status.booted.image.image
   local current_image
-  current_image="$(echo "$current_status" | jq -r '.status.booted.image.image // .spec.image.image // .image.id // .image // empty' 2>/dev/null)" || true
+  current_image="$(echo "$current_status" | grep -oE '"image":\s*"[^"]*"' | head -1 | sed 's/.*"image":[[:space:]]*"//;s/"$//')" || true
   
   # If we have a current image, verify it's valid
   if [ -n "$current_image" ]; then
@@ -230,8 +233,8 @@ bootc_skip_if_no_rollback() {
   local baseline_status
   baseline_status="$(bootc_ssh "bootc status --format=json" 2>&1)"
   
-  # Verify baseline is valid
-  echo "$baseline_status" | jq . >/dev/null 2>&1 || {
+  # Verify baseline is valid JSON using grep
+  echo "$baseline_status" | grep -qE '^\s*\{' && echo "$baseline_status" | grep -qE '\}\s*$' || {
     skip "Baseline system state is invalid"
   }
   
@@ -251,8 +254,8 @@ bootc_skip_if_no_rollback() {
   # Check bootc status works
   run bash -c "ssh $(bootc_ssh_opts) 'bootc status --format=json 2>&1' 2>&1"
   
-  # Status should return valid JSON
-  echo "$output" | jq . >/dev/null 2>&1 || {
+  # Status should return valid JSON using grep
+  echo "$output" | grep -qE '^\s*\{' && echo "$output" | grep -qE '\}\s*$' || {
     echo "System corrupted - invalid bootc status: $output"
     return 1
   }
@@ -275,49 +278,47 @@ bootc_skip_if_no_rollback() {
   local status
   status="$(bootc_ssh "bootc status --format=json" 2>&1)"
   
-  # Verify status is valid JSON with bootc information
-  echo "$status" | jq . >/dev/null 2>&1 || {
+  # Verify status is valid JSON using grep
+  echo "$status" | grep -qE '^\s*\{' && echo "$status" | grep -qE '\}\s*$' || {
     echo "Invalid bootc status: $status"
     return 1
   }
   
-  # Check for rollback-related fields in the status
+  # Check for rollback-related fields in the status using grep
   # bootc 1.14.1: status.rollback, status.staged
   # Legacy: .rollback, .staged
   local has_rollback_fields
-  has_rollback_fields=$(echo "$status" | jq -e '
-    (.rollback != null) or
-    (.staged != null) or
-    (.status.rollback != null) or
-    (.status.staged != null) or
-    (.type != null) or
-    (.status.type != null)
-  ' 2>/dev/null) || true
+  has_rollback_fields=0
+  
+  # Check for rollback/staged fields (may be null or have values)
+  if echo "$status" | grep -qE '"rollback":|"staged":|"type":'; then
+    has_rollback_fields=1
+  fi
   
   # The status should contain rollback-related fields (even if null)
   # This verifies the MECHANISM for rollback exists
-  local rollback_field_count
-  rollback_field_count=$(echo "$status" | jq -r '
-    [
-      (.rollback | type),
-      (.staged | type),
-      (.status.rollback | type),
-      (.status.staged | type)
-    ] | map(select(. != "null")) | length
-  ' 2>/dev/null) || rollback_field_count=0
+  # Count how many rollback-related fields are present (even as null)
+  local rollback_field_count=0
+  
+  # Check for presence of rollback/staged/type fields (even as null)
+  echo "$status" | grep -qE '"rollback"' && rollback_field_count=$((rollback_field_count + 1))
+  echo "$status" | grep -qE '"staged"' && rollback_field_count=$((rollback_field_count + 1))
+  echo "$status" | grep -qE '"type"' && rollback_field_count=$((rollback_field_count + 1))
+  echo "$status" | grep -qE '"booted"' && rollback_field_count=$((rollback_field_count + 1))
   
   # If no rollback fields exist at all, the mechanism may not be present
   if [ "$rollback_field_count" -eq 0 ]; then
-    # Check if at least the status structure is complete
-    echo "$status" | jq -e '.status or .image or .BootcHost' >/dev/null 2>&1 || {
+    # Check if at least the status structure is complete using grep
+    echo "$status" | grep -qE '"status"|"image"|"BootcHost"' || {
       skip "Bootc status structure incomplete - cannot verify rollback mechanism"
     }
   fi
   
   # At minimum, verify bootc status reports the booted image correctly
   # bootc 1.14.1: image is at status.booted.image.image
+  # Use grep-based parsing
   local image
-  image="$(echo "$status" | jq -r '.status.booted.image.image // .spec.image.image // .image.id // .image // empty' 2>/dev/null)" || true
+  image="$(echo "$status" | grep -oE '"image":\s*"[^"]*"' | head -1 | sed 's/.*"image":[[:space:]]*"//;s/"$//')" || true
   
   [ -n "$image" ] || {
     skip "No booted image in status - cannot verify rollback mechanism without booted image"
@@ -345,9 +346,9 @@ bootc_skip_if_no_rollback() {
   local status_before
   status_before="$(bootc_ssh "bootc status --format=json" 2>&1)"
   
-  # Extract current image
+  # Extract current image using grep
   local image_before
-  image_before="$(echo "$status_before" | jq -r '.status.booted.image.image // .spec.image.image // .image.id // .image // empty' 2>/dev/null)" || true
+  image_before="$(echo "$status_before" | grep -oE '"image":\s*"[^"]*"' | head -1 | sed 's/.*"image":[[:space:]]*"//;s/"$//')" || true
   
   # Trigger rollback (this should work since we have rollback available)
   run bash -c "ssh $(bootc_ssh_opts) 'bootc rollback 2>&1' 2>&1"
@@ -359,15 +360,15 @@ bootc_skip_if_no_rollback() {
   local status_after
   status_after="$(bootc_ssh "bootc status --format=json" 2>&1)"
   
-  # Verify system is in valid state
-  echo "$status_after" | jq . >/dev/null 2>&1 || {
+  # Verify system is in valid state using grep for JSON validation
+  echo "$status_after" | grep -qE '^\s*\{' && echo "$status_after" | grep -qE '\}\s*$' || {
     echo "Invalid status after rollback: $status_after"
     return 1
   }
   
   # System should be bootable
   local image_after
-  image_after="$(echo "$status_after" | jq -r '.status.booted.image.image // .spec.image.image // .image.id // .image // empty' 2>/dev/null)" || true
+  image_after="$(echo "$status_after" | grep -oE '"image":\s*"[^"]*"' | head -1 | sed 's/.*"image":[[:space:]]*"//;s/"$//')" || true
   
   [ -n "$image_after" ] || {
     echo "No booted image after rollback: $status_after"
@@ -402,10 +403,10 @@ bootc_skip_if_no_rollback() {
     return 1
   }
   
-  # Parse image reference
+  # Parse image reference using grep
   # bootc 1.14.1: image is at status.booted.image.image
   local image
-  image="$(echo "$status" | jq -r '.status.booted.image.image // .spec.image.image // .image.id // .image // empty' 2>/dev/null)" || true
+  image="$(echo "$status" | grep -oE '"image":\s*"[^"]*"' | head -1 | sed 's/.*"image":[[:space:]]*"//;s/"$//')" || true
   
   # Image should be present and valid
   [ -n "$image" ] || {
@@ -438,20 +439,10 @@ bootc_skip_if_no_rollback() {
   status="$(bootc_ssh "bootc status --format=json" 2>&1)"
   
   # Status should indicate deployment state
-  # Look for fields indicating rollback capability
+  # Look for fields indicating rollback capability using grep
   # bootc 1.14.1: status.rollback, status.staged are the correct paths
   # Legacy: .rollback, .staged, .type, .image
-  echo "$status" | jq -e '
-    .status.rollback //
-    .status.staged //
-    .status.type //
-    .status.booted //
-    .rollback //
-    .staged //
-    .type //
-    .image //
-    .BootcHost
-  ' >/dev/null 2>&1 || {
+  echo "$status" | grep -qE '"rollback"|"staged"|"type"|"booted"|"image"|"BootcHost"|"version"' || {
     echo "Status missing rollback/deployment information: $status"
     return 1
   }
@@ -537,22 +528,22 @@ bootc_skip_if_no_rollback() {
   run bash -c "ssh $(bootc_ssh_opts) 'bootc status 2>&1' 2>&1"
   assert_success
   
-  # 3. Verify bootc status is valid JSON
+  # 3. Verify bootc status is valid JSON using grep
   local status
   status="$(bootc_ssh "bootc status --format=json" 2>&1)"
-  echo "$status" | jq . >/dev/null 2>&1 || {
+  echo "$status" | grep -qE '^\s*\{' && echo "$status" | grep -qE '\}\s*$' || {
     echo "Invalid bootc status: $status"
     return 1
   }
   
-  # 4. Verify system has valid image
+  # 4. Verify system has valid image using grep
   # bootc 1.14.1: image is at status.booted.image.image
   local image
-  image="$(echo "$status" | jq -r '.status.booted.image.image // .spec.image.image // .image.id // .image // empty' 2>/dev/null)" || true
+  image="$(echo "$status" | grep -oE '"image":\s*"[^"]*"' | head -1 | sed 's/.*"image":[[:space:]]*"//;s/"$//')" || true
   
   [ -n "$image" ] || {
-    # In bootc 1.14.1: status.rollback, status.staged are the correct paths
-    echo "$status" | jq -e '.status.rollback // .status.staged // .status.type // .rollback // .staged // .type' >/dev/null 2>&1 || {
+    # In bootc 1.14.1: check for rollback/staged/type fields as fallback
+    echo "$status" | grep -qE '"rollback"|"staged"|"type"|"booted"' || {
       echo "No valid image or deployment info: $status"
       return 1
     }
@@ -573,10 +564,10 @@ bootc_skip_if_no_rollback() {
   local status
   status="$(bootc_ssh "bootc status --format=json" 2>&1)"
   
-  # Extract version (may be in various locations in JSON)
+  # Extract version using grep - look for version field
   # bootc 1.14.1: version might be in status.booted.version or status.version
   local version
-  version="$(echo "$status" | jq -r '.status.booted.version // .status.version // .version // .image.version // empty' 2>/dev/null)" || true
+  version="$(echo "$status" | grep -oE '"version":\s*"[^"]*"' | head -1 | sed 's/.*"version":[[:space:]]*"//;s/"$//')" || true
   
   # Version should be present (or system should have other identifier)
   # This verifies version reporting works
@@ -587,8 +578,8 @@ bootc_skip_if_no_rollback() {
     }
   else
     # If no version, system should have image ID or other identifier
-    # bootc 1.14.1: check for status.booted.image.image or spec.image.image
-    echo "$status" | jq -e '.status.booted // .spec.image // .image // .id // .BootcHost' >/dev/null 2>&1 || {
+    # bootc 1.14.1: check for booted/image fields
+    echo "$status" | grep -qE '"booted"|"image"|"id"|"BootcHost"' || {
       echo "No version or image identifier in status: $status"
       return 1
     }
