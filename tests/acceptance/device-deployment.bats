@@ -855,7 +855,7 @@ device_teardown() {
 # =============================================================================
 
 @test "Dockerfile: bootc commands are available in Containerfile" {
-  run bash -c "grep -r 'bootc install' Containerfile* 2>/dev/null | head -3"
+  run bash -c "grep -r 'bootc install' Containerfile* 2>/dev/null"
   
   [ $status -eq 0 ] || skip "No bootc install in Containerfile"
 }
