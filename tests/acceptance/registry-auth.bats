@@ -28,6 +28,15 @@ setup() {
   if ! podman info &>/dev/null; then
     skip "podman not functional in this environment"
   fi
+  
+  # Save current auth state (if any) so we can restore it after tests
+  # that require unauthenticated state
+  if [ -f "$HOME/.config/containers/auth.json" ]; then
+    cp "$HOME/.config/containers/auth.json" "$HOME/.config/containers/auth.json.bak"
+  fi
+  if [ -f "$HOME/.docker/config.json" ]; then
+    cp "$HOME/.docker/config.json" "$HOME/.docker/config.json.bak"
+  fi
 }
 
 teardown() {
@@ -37,8 +46,17 @@ teardown() {
   # Cleanup full image name if it exists
   podman rmi "$FULL_IMAGE_NAME" &>/dev/null || true
   
-  # Logout if logged in (cleanup auth state)
-  podman logout "$REGISTRY" &>/dev/null || true
+  # Clear all authentication to leave clean state
+  rm -f "$HOME/.config/containers/auth.json"
+  rm -f "$HOME/.docker/config.json"
+  
+  # Restore auth state if it was saved
+  if [ -f "$HOME/.config/containers/auth.json.bak" ]; then
+    mv "$HOME/.config/containers/auth.json.bak" "$HOME/.config/containers/auth.json"
+  fi
+  if [ -f "$HOME/.docker/config.json.bak" ]; then
+    mv "$HOME/.docker/config.json.bak" "$HOME/.docker/config.json"
+  fi
 }
 
 # =============================================================================
@@ -180,19 +198,22 @@ teardown() {
   
   skip_if_tool_not_available "podman"
   
-  # Ensure we're not logged in
-  podman logout "$REGISTRY" &>/dev/null || true
+  # First, ensure we have the image locally by pulling from GHCR
+  # (this requires auth, which may be set up via environment)
+  run podman pull --quiet "$FULL_IMAGE_NAME" 2>&1 || true
+  if [ $status -ne 0 ]; then
+    # If pull fails (no auth), build locally instead
+    run podman build \
+      --file "$(get_fixture_path "Containerfile.test")" \
+      --tag "$TEST_IMAGE" \
+      "$(dirname "$(get_fixture_path "Containerfile.test")")"
+    [ $status -eq 0 ] || skip "Build failed"
+    podman tag "$TEST_IMAGE" "$FULL_IMAGE_NAME"
+  fi
   
-  # Create a test image
-  run podman build \
-    --file "$(get_fixture_path "Containerfile.test")" \
-    --tag "$TEST_IMAGE" \
-    "$(dirname "$(get_fixture_path "Containerfile.test")")"
-  
-  [ $status -eq 0 ] || skip "Build failed"
-  
-  # Tag for registry
-  podman tag "$TEST_IMAGE" "$FULL_IMAGE_NAME"
+  # Clear ALL authentication files (podman uses both locations)
+  rm -f "$HOME/.config/containers/auth.json"
+  rm -f "$HOME/.docker/config.json"
   
   # Attempt push without logging in
   run podman push "$FULL_IMAGE_NAME" 2>&1 || true
@@ -208,18 +229,21 @@ teardown() {
   
   skip_if_tool_not_available "podman"
   
-  # Ensure not logged in
-  podman logout "$REGISTRY" &>/dev/null || true
+  # First, ensure we have the image locally
+  run podman pull --quiet "$FULL_IMAGE_NAME" 2>&1 || true
+  if [ $status -ne 0 ]; then
+    # If pull fails, build locally instead
+    run podman build \
+      --file "$(get_fixture_path "Containerfile.test")" \
+      --tag "$TEST_IMAGE" \
+      "$(dirname "$(get_fixture_path "Containerfile.test")")"
+    [ $status -eq 0 ] || skip "Build failed"
+    podman tag "$TEST_IMAGE" "$FULL_IMAGE_NAME"
+  fi
   
-  # Create test image
-  run podman build \
-    --file "$(get_fixture_path "Containerfile.test")" \
-    --tag "$TEST_IMAGE" \
-    "$(dirname "$(get_fixture_path "Containerfile.test")")"
-  
-  [ $status -eq 0 ] || skip "Build failed"
-  
-  podman tag "$TEST_IMAGE" "$FULL_IMAGE_NAME"
+  # Clear ALL authentication files
+  rm -f "$HOME/.config/containers/auth.json"
+  rm -f "$HOME/.docker/config.json"
   
   # Attempt push - should fail
   run podman push "$FULL_IMAGE_NAME" 2>&1 || true
@@ -239,23 +263,29 @@ teardown() {
   
   skip_if_tool_not_available "podman"
   
+  # First, ensure we have the image locally
+  run podman pull --quiet "$FULL_IMAGE_NAME" 2>&1 || true
+  if [ $status -ne 0 ]; then
+    # If pull fails, build locally instead
+    run podman build \
+      --file "$(get_fixture_path "Containerfile.test")" \
+      --tag "$TEST_IMAGE" \
+      "$(dirname "$(get_fixture_path "Containerfile.test")")"
+    [ $status -eq 0 ] || skip "Build failed"
+    podman tag "$TEST_IMAGE" "$FULL_IMAGE_NAME"
+  fi
+  
+  # Clear any existing auth
+  rm -f "$HOME/.config/containers/auth.json"
+  rm -f "$HOME/.docker/config.json"
+  
   # Login with invalid credentials
   run podman login \
     --username "invalid-user-$(date +%s)" \
     --password "invalid-token-$(date +%s)" \
     "$REGISTRY" 2>&1 || true
   
-  # Create and tag test image
-  run podman build \
-    --file "$(get_fixture_path "Containerfile.test")" \
-    --tag "$TEST_IMAGE" \
-    "$(dirname "$(get_fixture_path "Containerfile.test")")"
-  
-  [ $status -eq 0 ] || skip "Build failed"
-  
-  podman tag "$TEST_IMAGE" "$FULL_IMAGE_NAME"
-  
-  # Attempt push
+  # Attempt push with invalid creds
   run podman push "$FULL_IMAGE_NAME" 2>&1 || true
   
   # Should fail with auth error
@@ -269,21 +299,27 @@ teardown() {
   
   skip_if_tool_not_available "podman"
   
+  # First, ensure we have the image locally
+  run podman pull --quiet "$FULL_IMAGE_NAME" 2>&1 || true
+  if [ $status -ne 0 ]; then
+    # If pull fails, build locally instead
+    run podman build \
+      --file "$(get_fixture_path "Containerfile.test")" \
+      --tag "$TEST_IMAGE" \
+      "$(dirname "$(get_fixture_path "Containerfile.test")")"
+    [ $status -eq 0 ] || skip "Build failed"
+    podman tag "$TEST_IMAGE" "$FULL_IMAGE_NAME"
+  fi
+  
+  # Clear any existing auth
+  rm -f "$HOME/.config/containers/auth.json"
+  rm -f "$HOME/.docker/config.json"
+  
   # Login with clearly invalid/expired-looking token
   run podman login \
     --username "expired-user" \
     --password "expired-token-2020-01-01" \
     "$REGISTRY" 2>&1 || true
-  
-  # Create test image
-  run podman build \
-    --file "$(get_fixture_path "Containerfile.test")" \
-    --tag "$TEST_IMAGE" \
-    "$(dirname "$(get_fixture_path "Containerfile.test")")"
-  
-  [ $status -eq 0 ] || skip "Build failed"
-  
-  podman tag "$TEST_IMAGE" "$FULL_IMAGE_NAME"
   
   # Attempt push
   run podman push "$FULL_IMAGE_NAME" 2>&1 || true
