@@ -32,6 +32,11 @@ setup() {
     skip "podman not functional in this environment"
   fi
   
+  # Login with skopeo for tag listing tests (skopeo uses separate auth storage from podman)
+  if command -v skopeo &>/dev/null && [ -n "$PUSH_PASSWORD" ]; then
+    skopeo login -u "${PUSH_USERNAME:-${GITHUB_ACTOR:-user}}" -p "$PUSH_PASSWORD" ghcr.io 2>/dev/null || true
+  fi
+  
   # Bootc device tests require a configured bootc device
   # This will skip all tests in this file if no bootc device is configured
   bootc_skip_if_not_configured
