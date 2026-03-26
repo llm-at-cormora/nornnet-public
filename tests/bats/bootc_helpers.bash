@@ -82,6 +82,31 @@ bootc_ssh() {
   ssh $(bootc_ssh_opts) "$cmd" 2>&1
 }
 
+# Wait for device to come back online after reboot
+# Usage: wait_for_reboot <timeout_seconds> [poll_interval_seconds]
+# Returns 0 on success (device online), 1 on timeout
+# Environment: Uses REBOOT_TIMEOUT and REBOOT_POLL_INTERVAL as defaults
+wait_for_reboot() {
+  local timeout="${1:-${REBOOT_TIMEOUT:-300}}"
+  local interval="${2:-${REBOOT_POLL_INTERVAL:-10}}"
+  local elapsed=0
+  
+  echo "Waiting for device to come back online (timeout: ${timeout}s)..."
+  
+  while [ $elapsed -lt $timeout ]; do
+    if ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no $(bootc_ssh_opts) 'echo online' &>/dev/null; then
+      echo "Device back online after ${elapsed}s"
+      return 0
+    fi
+    sleep $interval
+    elapsed=$((elapsed + interval))
+    echo "  Still waiting... ${elapsed}s elapsed"
+  done
+  
+  echo "Device did not come back online within ${timeout}s"
+  return 1
+}
+
 # Check if a bootc device is configured
 # Returns 0 (success) if configured, 1 if not configured
 bootc_device_configured() {
@@ -153,11 +178,16 @@ bootc_cmd() {
 }
 
 # Get the current booted image from bootc status
-# Outputs the image reference or empty string
+# Outputs the image reference (digest) or empty string
+# Supports multiple JSON formats:
+# - Legacy: .image.id
+# - Legacy: .image
+# - bootc 1.14.1: .status.booted.image.id
+# - bootc 1.14.1: .status.booted.id
 bootc_current_image() {
   local status
   status="$(bootc_status)" || return 1
-  echo "$status" | jq -r '.image.id // .image // empty' 2>/dev/null
+  echo "$status" | jq -r '.image.id // .image // .status.booted.image.id // .status.booted.id // empty' 2>/dev/null
 }
 
 # Get the version from bootc status
@@ -367,3 +397,4 @@ export -f install_skopeo_if_needed
 export -f list_registry_tags
 export -f get_tag_digest
 export -f ensure_staged_update
+export -f wait_for_reboot

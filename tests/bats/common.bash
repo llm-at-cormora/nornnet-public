@@ -151,7 +151,8 @@ assert_failure() {
 # Assert output contains string
 assert_output_contains() {
   local expected="$1"
-  if ! echo "$output" | grep -q "$expected"; then
+  # Use -- to prevent grep from interpreting options in the pattern
+  if ! echo "$output" | grep -q -- "$expected"; then
     echo "Expected output to contain: $expected"
     echo "Actual output: $output"
     return 1
