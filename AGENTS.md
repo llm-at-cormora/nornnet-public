@@ -40,6 +40,10 @@ export BOOTC_DEVICE_SSH_KEY=~/.ssh/hetzner_ed25519
 # Build/test server (where tests run)
 export HETZNER_SERVER_IP=46.224.173.88
 export DEVICE_SSH_KEY=~/.ssh/hetzner_ed25519
+
+# GitHub Container Registry push credentials
+export PUSH_USERNAME=llm-at-cormora
+export PUSH_PASSWORD=<GITHUB_TOKEN>
 ```
 
 ### Running Tests
@@ -49,8 +53,16 @@ export DEVICE_SSH_KEY=~/.ssh/hetzner_ed25519
 ssh -i ~/.ssh/hetzner_ed25519 root@46.224.173.88
 
 # On build server:
+# First, log in to GHCR:
+podman login ghcr.io -u llm-at-cormora -p <GITHUB_TOKEN>
+
+# Set environment variables:
 export BOOTC_DEVICE_HOST=46.224.174.46
 export BOOTC_DEVICE_SSH_KEY=/root/.ssh/hetzner_ed25519
+export PUSH_USERNAME=llm-at-cormora
+export PUSH_PASSWORD=<GITHUB_TOKEN>
+
+# Run tests:
 cd /root/nornnet
 git pull origin main
 bats tests/acceptance/
