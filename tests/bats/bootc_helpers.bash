@@ -206,3 +206,9 @@ export -f bootc_current_image
 export -f bootc_current_version
 export -f bootc_has_rollback
 export -f bootc_skip_if_no_rollback
+export -f bootc_get_version
+export -f has_tag_lister
+export -f install_skopeo_if_needed
+export -f list_registry_tags
+export -f get_tag_digest
+export -f ensure_staged_update

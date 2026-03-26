@@ -56,11 +56,28 @@ teardown() {
 # =============================================================================
 
 # Skip test if rollback is not available (both rollback and staged are null)
+# Attempts to create a staged update first if no rollback is available
 # Use this for tests that require actual rollback capability
 bootc_skip_if_no_rollback() {
-  if ! bootc_has_rollback; then
-    skip "Rollback not available on this device (rollback: null, staged: null). Cannot test actual rollback scenarios without a staged update."
+  if bootc_has_rollback; then
+    # Rollback already available
+    return 0
   fi
+  
+  # Try to create a staged update to enable rollback
+  # This downloads the update without applying it, populating the staged field
+  echo "No staged update found, attempting to create one..."
+  
+  if bootc_ssh "bootc upgrade --download-only 2>&1" &>/dev/null; then
+    # Wait a moment for the status to update
+    sleep 3
+    if bootc_has_rollback; then
+      echo "Successfully created staged update for rollback testing"
+      return 0
+    fi
+  fi
+  
+  skip "Rollback not available on this device (rollback: null, staged: null). Tried to create staged update but none available."
 }
 
 # =============================================================================
