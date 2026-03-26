@@ -302,10 +302,12 @@ setup() {
   
   # Try local skopeo first
   if command -v skopeo &>/dev/null; then
-    latest_digest="$(skopeo inspect "docker://${REMOTE_IMAGE}:latest" 2>/dev/null | jq -r '.Digest')" || true
+    # Extract digest using grep instead of jq (jq not installed on build server)
+    latest_digest="$(skopeo inspect "docker://${REMOTE_IMAGE}:latest" 2>/dev/null | grep -oE 'sha256:[a-f0-9]{64}' | head -1)" || true
   # Try skopeo on bootc device
   elif bootc_device_configured && bootc_ssh "command -v skopeo" &>/dev/null; then
-    latest_digest="$(bootc_ssh "skopeo inspect docker://${REMOTE_IMAGE}:latest" 2>/dev/null | bootc_ssh 'jq -r .Digest')" || true
+    # Extract digest using grep instead of jq
+    latest_digest="$(bootc_ssh "skopeo inspect docker://${REMOTE_IMAGE}:latest" 2>/dev/null | grep -oE 'sha256:[a-f0-9]{64}' | head -1)" || true
   fi
   
   # If we couldn't get latest digest, skip the comparison test
