@@ -219,7 +219,8 @@ bootc_skip_if_no_rollback() {
   # If we have a current image, verify it's valid
   if [ -n "$current_image" ]; then
     # Verify image contains registry reference or digest
-    echo "$current_image" | grep -qE "quay.io|docker.io|localhost|sha256" || {
+    # Include ghcr.io for GitHub Container Registry
+    echo "$current_image" | grep -qE "quay.io|docker.io|localhost|sha256|ghcr.io" || {
       echo "Current image not in expected format: $current_image"
       return 1
     }
@@ -435,7 +436,8 @@ bootc_skip_if_no_rollback() {
   }
   
   # Image should contain valid reference (registry or digest)
-  echo "$image" | grep -qE "quay.io|docker.io|localhost|sha256" || {
+  # Include ghcr.io for GitHub Container Registry
+  echo "$image" | grep -qE "quay.io|docker.io|localhost|sha256|ghcr.io" || {
     echo "Invalid image reference: $image"
     return 1
   }

@@ -171,13 +171,31 @@ bootc_current_version() {
 # Check if a rollback/staged image is available
 # Returns 0 if rollback is available, 1 if not
 # Handles both older bootc format (.rollback, .staged) and bootc 1.14.1 format (.status.rollback, .status.staged)
+# Uses grep-based parsing for JSON since jq may not be available on build server
 bootc_has_rollback() {
   local status
   status="$(bootc_status)" || return 1
-  # Check legacy format
-  echo "$status" | jq -e '.rollback != null or .staged != null or (.type == "rollback")' >/dev/null 2>&1 && return 0
-  # Check bootc 1.14.1 format
-  echo "$status" | jq -e '.status.rollback != null or .status.staged != null' >/dev/null 2>&1 && return 0
+  
+  # Check for non-null rollback or staged fields using grep
+  # Look for patterns like "rollback":{ or "staged":{ (object, not null)
+  # In bootc 1.14.1, the format is "rollback":null or "rollback":{"image":...
+  # We need to detect when rollback/staged is NOT null (has an object value)
+  
+  # For legacy format: look for "rollback":{ at start of value
+  if echo "$status" | grep -qE '"rollback":\s*\{'; then
+    return 0
+  fi
+  # For legacy format: look for "staged":{ at start of value
+  if echo "$status" | grep -qE '"staged":\s*\{'; then
+    return 0
+  fi
+  # For bootc 1.14.1 format: look for "rollback":{ and "staged":{ in status object
+  if echo "$status" | grep -qE '"status":\s*\{[^}]*"rollback":\s*\{"'; then
+    return 0
+  fi
+  if echo "$status" | grep -qE '"status":\s*\{[^}]*"staged":\s*\{"'; then
+    return 0
+  fi
   return 1
 }
 
@@ -187,6 +205,143 @@ bootc_skip_if_no_rollback() {
   if ! bootc_has_rollback; then
     skip "No rollback available on device (rollback and staged are null). Rollback requires having a previous deployment to roll back to."
   fi
+}
+
+# Get the version from bootc status using grep-based parsing
+# Outputs the version string or empty string
+bootc_get_version() {
+  local status
+  status="$(bootc_status)" || return 1
+  # bootc 1.14.1: version is in status.booted.image.version
+  echo "$status" | grep -oE '"version":\s*"[^"]*"' | head -1 | sed 's/.*"version":[[:space:]]*"//;s/"$//' || true
+}
+
+# Check if a tag lister tool is available (skopeo, crane, or podman)
+# Returns 0 if available, 1 if not
+has_tag_lister() {
+  command -v skopeo &>/dev/null && return 0
+  command -v crane &>/dev/null && return 0
+  # Check on bootc device
+  bootc_ssh "command -v skopeo" &>/dev/null && return 0
+  return 1
+}
+
+# Install skopeo on the build server if needed
+# Returns 0 if skopeo is now available, 1 if installation failed
+install_skopeo_if_needed() {
+  if command -v skopeo &>/dev/null; then
+    return 0
+  fi
+  
+  # Try to install skopeo
+  if command -v dnf &>/dev/null; then
+    dnf install -y skopeo &>/dev/null && return 0
+  elif command -v apt-get &>/dev/null; then
+    apt-get install -y skopeo &>/dev/null && return 0
+  fi
+  
+  # Check if it became available
+  command -v skopeo &>/dev/null && return 0
+  return 1
+}
+
+# List tags from a container registry
+# Uses skopeo on bootc device (which has it) with GHCR auth
+# Arguments: registry/image (e.g., ghcr.io/llm-at-cormora/nornnet)
+# Outputs JSON array of tags or empty on failure
+list_registry_tags() {
+  local image="${1:-}"
+  if [ -z "$image" ]; then
+    echo "list_registry_tags: no image specified" >&2
+    return 1
+  fi
+  
+  # Try skopeo on bootc device with auth file
+  if bootc_device_configured; then
+    # Use podman auth file on bootc device for skopeo
+    local authfile="/var/lib/containers/auth.json"
+    bootc_ssh "test -f $authfile" &>/dev/null || authfile="$HOME/.config/containers/auth.json"
+    
+    local output
+    output="$(bootc_ssh "skopeo list-tags --authfile $authfile docker://${image}" 2>&1)" || return 1
+    echo "$output"
+    return 0
+  fi
+  
+  # Try local skopeo with auth file
+  local authfile="${XDG_RUNTIME_DIR:-/tmp}/containers/auth.json"
+  if [ -f "$authfile" ]; then
+    skopeo list-tags --authfile "$authfile" "docker://${image}" 2>&1 && return 0
+  fi
+  
+  # Try skopeo without auth (public repos)
+  skopeo list-tags "docker://${image}" 2>&1 && return 0
+  
+  return 1
+}
+
+# Get digest of a specific tag from registry
+# Arguments: registry/image:tag
+# Outputs digest string or empty on failure
+get_tag_digest() {
+  local ref="${1:-}"
+  if [ -z "$ref" ]; then
+    echo "get_tag_digest: no image reference specified" >&2
+    return 1
+  fi
+  
+  # Try on bootc device first
+  if bootc_device_configured; then
+    local authfile="/var/lib/containers/auth.json"
+    bootc_ssh "test -f $authfile" &>/dev/null || authfile="$HOME/.config/containers/auth.json"
+    
+    local output
+    output="$(bootc_ssh "skopeo inspect --authfile $authfile docker://${ref}" 2>&1 | grep -oE 'sha256:[a-f0-9]+' | head -1)" || return 1
+    echo "$output"
+    return 0
+  fi
+  
+  # Try local skopeo
+  local authfile="${XDG_RUNTIME_DIR:-/tmp}/containers/auth.json"
+  if [ -f "$authfile" ]; then
+    skopeo inspect --authfile "$authfile" "docker://${ref}" 2>&1 | grep -oE 'sha256:[a-f0-9]+' | head -1 && return 0
+  fi
+  
+  skopeo inspect "docker://${ref}" 2>&1 | grep -oE 'sha256:[a-f0-9]+' | head -1 && return 0
+  return 1
+}
+
+# Ensure a staged update exists on the device for rollback testing
+# This creates a staged update by switching to a different image
+# Returns 0 if staged update is now available, 1 otherwise
+ensure_staged_update() {
+  local target_image="${1:-}"
+  
+  if bootc_has_rollback; then
+    return 0
+  fi
+  
+  # If no target image specified, use a different test image
+  if [ -z "$target_image" ]; then
+    target_image="ghcr.io/llm-at-cormora/nornnet-test:latest"
+  fi
+  
+  # Check if bootc device is configured
+  bootc_device_configured || return 1
+  
+  # Check if image is already available in containers-storage
+  if bootc_ssh "podman images -q ${target_image}" &>/dev/null; then
+    # Image is available locally, switch to it with containers-storage transport
+    bootc_ssh "bootc switch --transport containers-storage ${target_image}" &>/dev/null && return 0
+  fi
+  
+  # Try pulling the image first
+  bootc_ssh "podman pull ${target_image}" &>/dev/null || return 1
+  
+  # Now switch
+  bootc_ssh "bootc switch --transport containers-storage ${target_image}" &>/dev/null && return 0
+  
+  return 1
 }
 
 # Export functions for use in bats tests
