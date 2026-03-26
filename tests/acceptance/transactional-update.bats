@@ -23,9 +23,9 @@
 #   }
 # }
 
+load '../bats/bootc_helpers.bash'
 load '../bats/common.bash'
 load '../bats/fixtures.bash'
-load '../bats/bootc_helpers.bash'
 load '../bats/ci_helpers.bash'
 
 # =============================================================================

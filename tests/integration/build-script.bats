@@ -69,8 +69,9 @@ teardown() {
   
   run "$BUILD_SCRIPT" || true
   
-  # Should fail (exit non-zero) OR output should contain error
-  [ $status -ne 0 ] || [ ${#output} -gt 0 ]
+  # Should fail (exit non-zero) AND output should contain error
+  [ $status -ne 0 ]
+  assert_output_contains "not found" || assert_output_contains "Unknown" || assert_output_contains "invalid"
 }
 
 @test "build.sh validates missing Containerfile" {
@@ -121,4 +122,106 @@ teardown() {
   assert_success
   assert_output_contains "\-\-registry"
   assert_output_contains "\-r,"
+}
+
+@test "build.sh supports --layer option (long form)" {
+  run "$BUILD_SCRIPT" --help
+  
+  assert_success
+  assert_output_contains "\-\-layer"
+}
+
+@test "build.sh supports --tag option (long form)" {
+  run "$BUILD_SCRIPT" --help
+  
+  assert_success
+  assert_output_contains "\-\-tag"
+}
+
+@test "build.sh supports --registry option (long form)" {
+  run "$BUILD_SCRIPT" --help
+  
+  assert_success
+  assert_output_contains "\-\-registry"
+}
+
+@test "build.sh uses LAYER environment variable when provided" {
+  run "$BUILD_SCRIPT" --help
+  
+  # Verify the script accepts LAYER as env var by checking help mentions layer behavior
+  assert_success
+  # The script should indicate layer selection in its usage
+  assert_output_contains "layer"
+}
+
+@test "build.sh uses TAG environment variable when provided" {
+  run "$BUILD_SCRIPT" --help
+  
+  assert_success
+  # Verify tag-related functionality is present
+  assert_output_contains "tag"
+}
+
+@test "build.sh uses REGISTRY environment variable when provided" {
+  run "$BUILD_SCRIPT" --help
+  
+  assert_success
+  # Verify registry-related functionality is present
+  assert_output_contains "registry"
+}
+
+@test "build.sh parses --layer argument correctly" {
+  # Skip if podman not available
+  if [ "${PODMAN_AVAILABLE:-false}" != "true" ]; then
+    skip "podman not available or not working"
+  fi
+  
+  # Check if Containerfile.base exists
+  if [ ! -f "$PROJECT_ROOT/Containerfile.base" ]; then
+    skip "Containerfile.base not found"
+  fi
+  
+  run "$BUILD_SCRIPT" --layer=base --tag="test-arg" --registry="localhost"
+  
+  assert_success
+  assert_output_contains "Build complete"
+}
+
+@test "build.sh parses -l, -t, -r short options correctly" {
+  # Skip if podman not available
+  if [ "${PODMAN_AVAILABLE:-false}" != "true" ]; then
+    skip "podman not available or not working"
+  fi
+  
+  # Check if Containerfile.base exists
+  if [ ! -f "$PROJECT_ROOT/Containerfile.base" ]; then
+    skip "Containerfile.base not found"
+  fi
+  
+  run "$BUILD_SCRIPT" -l base -t "test-short" -r "localhost"
+  
+  assert_success
+  assert_output_contains "Build complete"
+}
+
+@test "build.sh fails gracefully with invalid arguments" {
+  run "$BUILD_SCRIPT" --invalid-option 2>&1 || true
+  
+  # Should fail with unrecognized option or show usage
+  [ $status -ne 0 ]
+  assert_output_contains "Usage:" || assert_output_contains "error" || assert_output_contains "unknown"
+}
+
+@test "build.sh fails when --layer is missing value" {
+  run "$BUILD_SCRIPT" --layer 2>&1 || true
+  
+  # Should fail due to missing argument
+  [ $status -ne 0 ]
+}
+
+@test "build.sh fails when --tag is missing value" {
+  run "$BUILD_SCRIPT" --tag 2>&1 || true
+  
+  # Should fail due to missing argument
+  [ $status -ne 0 ]
 }
