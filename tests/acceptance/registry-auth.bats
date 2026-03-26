@@ -511,7 +511,8 @@ teardown() {
   [ "$status" -eq 0 ]
   
   # And podman login should have been called with correct args
-  _podman_called_with "username=$PUSH_USERNAME"
+  run _podman_called_with "username=$PUSH_USERNAME"
+  [ "$status" -eq 0 ]
 }
 
 @test "AC2.2: registry_login uses password-stdin for security" {
@@ -526,7 +527,8 @@ teardown() {
   registry_login "$REGISTRY" "$PUSH_USERNAME" "$PUSH_PASSWORD"
   
   # Then podman should be called with --password-stdin (not --password)
-  _podman_called_with "--password-stdin"
+  run _podman_called_with "--password-stdin"
+  [ "$status" -eq 0 ]
 }
 
 @test "AC2.2: registry_login fails when username is missing" {
@@ -758,7 +760,8 @@ teardown() {
     2>&1
   
   # Then verification should be attempted
-  _podman_called_with "manifest inspect"
+  run _podman_called_with "manifest inspect"
+  [ "$status" -eq 0 ]
 }
 
 # =============================================================================
