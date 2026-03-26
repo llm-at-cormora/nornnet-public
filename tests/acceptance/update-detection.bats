@@ -255,27 +255,31 @@ setup() {
   
   # Try local skopeo first
   if command -v skopeo &>/dev/null; then
-    run bash -c "skopeo list-tags docker://${REMOTE_IMAGE} 2>&1"
+    output_tags="$(skopeo list-tags "docker://${REMOTE_IMAGE}" 2>&1)" || true
   # Try local crane
   elif command -v crane &>/dev/null; then
-    run bash -c "crane tags ${REMOTE_IMAGE} 2>&1"
+    output_tags="$(crane tags "${REMOTE_IMAGE}" 2>&1)" || true
   # Try skopeo on bootc device (it has skopeo installed)
   elif bootc_device_configured && bootc_ssh "command -v skopeo" &>/dev/null; then
-    output_tags="$(list_registry_tags "${REMOTE_IMAGE}")" || true
-    echo "$output_tags" | grep -qE 'Tags|\[' && run echo "$output_tags"
+    output_tags="$(bootc_ssh "skopeo list-tags docker://${REMOTE_IMAGE}" 2>&1)" || true
   # Try installing skopeo on build server
   elif install_skopeo_if_needed; then
-    run bash -c "skopeo list-tags docker://${REMOTE_IMAGE} 2>&1"
+    output_tags="$(skopeo list-tags "docker://${REMOTE_IMAGE}" 2>&1)" || true
   else
     skip "No tag listing tool available (skopeo or crane recommended). Install skopeo with: dnf install skopeo"
   fi
   
-  # Should return list of tags
-  assert_success
+  # Check if we got valid output
+  if [ -z "$output_tags" ]; then
+    skip "Could not fetch tags - registry may require authentication"
+  fi
   
   # Output should contain version-like entries
-  echo "$output" | grep -qE 'v?[0-9]+\.[0-9]+\.[0-9]+|latest|Tags' || {
-    echo "No version tags found in registry listing: $output"
+  echo "$output_tags" | grep -qE 'v?[0-9]+\.[0-9]+\.[0-9]+|latest|Tags|\[' || {
+    echo "No version tags found in registry listing: $output_tags"
+    # Check if it's an auth error
+    echo "$output_tags" | grep -qiE "unauthorized|forbidden|authentication" && \
+      skip "Registry requires authentication for listing tags"
     return 1
   }
 }
@@ -323,7 +327,7 @@ setup() {
   tags_output="$(list_registry_tags "${REMOTE_IMAGE}")" || true
   
   if [ -z "$tags_output" ]; then
-    skip "Could not fetch tags from registry"
+    skip "Could not fetch tags - registry may require authentication"
   fi
   
   # Parse tags from JSON output using grep (works without jq)
@@ -331,7 +335,10 @@ setup() {
   tags="$(echo "$tags_output" | grep -oE '"v?[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' | tr -d 'v')" || true
   
   if [ -z "$tags" ]; then
-    skip "Could not fetch tags from registry"
+    # Check if it's an auth error
+    echo "$tags_output" | grep -qiE "unauthorized|forbidden|authentication" && \
+      skip "Registry requires authentication for listing tags"
+    skip "No semver tags found in registry listing"
   fi
   
   # Find highest version using semantic versioning
