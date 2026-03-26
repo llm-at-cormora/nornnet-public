@@ -261,19 +261,13 @@ setup() {
     output_tags="$(crane tags "${REMOTE_IMAGE}" 2>&1)" || true
   # Try skopeo on bootc device (it has skopeo installed)
   elif bootc_device_configured && bootc_ssh "command -v skopeo" &>/dev/null; then
-    # Debug output
-    echo "Using skopeo on bootc device..."
     output_tags="$(bootc_ssh "skopeo list-tags docker://${REMOTE_IMAGE}" 2>&1)" || true
-    echo "Raw output length: ${#output_tags}"
   # Try installing skopeo on build server
   elif install_skopeo_if_needed; then
     output_tags="$(skopeo list-tags "docker://${REMOTE_IMAGE}" 2>&1)" || true
   else
     skip "No tag listing tool available (skopeo or crane recommended). Install skopeo with: dnf install skopeo"
   fi
-  
-  # Debug output
-  echo "Final output length: ${#output_tags}"
   
   # Check if we got valid output
   if [ -z "$output_tags" ]; then
@@ -282,10 +276,10 @@ setup() {
   
   # Output should contain version-like entries
   echo "$output_tags" | grep -qE 'v?[0-9]+\.[0-9]+\.[0-9]+|latest|Tags|\[' || {
-    echo "No version tags found in registry listing: [$output_tags]"
     # Check if it's an auth error
     echo "$output_tags" | grep -qiE "unauthorized|forbidden|authentication" && \
       skip "Registry requires authentication for listing tags"
+    echo "No version tags found in registry listing: [$output_tags]"
     return 1
   }
 }
