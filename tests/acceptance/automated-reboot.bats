@@ -72,17 +72,19 @@ EOF
   chmod +x "$TEST_CONTEXT/mock_ssh_success.sh"
   
   # Test the polling logic
-  local start_time=$(date +%s)
+  local start_time
+  start_time=$(date +%s)
   local elapsed=0
   local max_attempts=5
   local attempt=0
   local success=false
   
-  while [ $attempt -lt $max_attempts ] && [ $elapsed -lt 15 ]; do
+  while [ "$attempt" -lt "$max_attempts" ] && [ "$elapsed" -lt 15 ]; do
     attempt=$((attempt + 1))
-    if $TEST_CONTEXT/mock_ssh_success.sh "$counter_file" 2>/dev/null; then
+    if "$TEST_CONTEXT/mock_ssh_success.sh" "$counter_file" 2>/dev/null; then
       success=true
-      local end_time=$(date +%s)
+      local end_time
+      end_time=$(date +%s)
       elapsed=$((end_time - start_time))
       echo "Device came back online after ${attempt} attempts (${elapsed}s)"
       break
@@ -114,18 +116,20 @@ EOF
   chmod +x "$TEST_CONTEXT/always_fail.sh"
   
   local timeout=3
-  local start_time=$(date +%s)
+  local start_time
+  start_time=$(date +%s)
   
   # Simulate wait_for_reboot with always-failing SSH
-  for i in $(seq 1 $timeout); do
-    $TEST_CONTEXT/always_fail.sh 2>/dev/null && break
+  for _ in $(seq 1 "$timeout"); do
+    "$TEST_CONTEXT/always_fail.sh" 2>/dev/null && break
     sleep 1
   done
   
-  local elapsed=$(($(date +%s) - start_time))
+  local elapsed
+  elapsed=$(($(date +%s) - start_time))
   
   # Should timeout after ~3 seconds
-  [ $elapsed -ge 2 ] && [ $elapsed -le 5 ]
+  [ "$elapsed" -ge 2 ] && [ "$elapsed" -le 5 ]
 }
 
 @test "wait_for_reboot: polls at correct interval" {
@@ -136,12 +140,13 @@ EOF
   local poll_interval=2
   local timeout=10
   local poll_count=0
-  local start_time=$(date +%s)
+  local start_time
+  start_time=$(date +%s)
   
   # Count polls until timeout
-  while [ $(($(date +%s) - start_time)) -lt $timeout ]; do
+  while [ $(($(date +%s) - start_time)) -lt "$timeout" ]; do
     poll_count=$((poll_count + 1))
-    sleep $poll_interval
+    sleep "$poll_interval"
   done
   
   # Should have polled approximately timeout/poll_interval times
@@ -150,7 +155,7 @@ EOF
   local diff=$((poll_count - expected))
   
   # Diff should be within 2 polls (accounting for shell overhead)
-  [ $diff -ge -2 ] && [ $diff -le 2 ]
+  [ "$diff" -ge -2 ] && [ "$diff" -le 2 ]
 }
 
 @test "wait_for_reboot: reports elapsed time on success" {
@@ -176,21 +181,23 @@ echo "$count" > "$counter_file"
 EOF
   chmod +x "$TEST_CONTEXT/delayed_success.sh"
   
-  local start_time=$(date +%s)
+  local start_time
+  start_time=$(date +%s)
   local success=false
   
-  for i in $(seq 1 10); do
-    if $TEST_CONTEXT/delayed_success.sh "$counter_file" 2>/dev/null; then
+  for _ in $(seq 1 10); do
+    if "$TEST_CONTEXT/delayed_success.sh" "$counter_file" 2>/dev/null; then
       success=true
       break
     fi
     sleep 1
   done
   
-  local elapsed=$(($(date +%s) - start_time))
+  local elapsed
+  elapsed=$(($(date +%s) - start_time))
   rm -f "$counter_file"
   
-  $success && [ $elapsed -ge 2 ] && [ $elapsed -le 5 ]
+  $success && [ "$elapsed" -ge 2 ] && [ "$elapsed" -le 5 ]
 }
 
 # =============================================================================
@@ -308,7 +315,7 @@ EOF
   run bootc_has_rollback
   
   # Function should return 0 or 1, not error
-  [ $status -eq 0 ] || [ $status -eq 1 ]
+  [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
 }
 
 # =============================================================================
@@ -406,7 +413,7 @@ EOF
   run bash -c "bootc_ssh 'journalctl --list-boots 2>&1 | head -5' 2>&1"
   
   # May fail due to permissions, but should return some output or graceful error
-  [ $status -eq 0 ] || {
+  [ "$status" -eq 0 ] || {
     # Permission errors are acceptable
     echo "$output" | grep -qE "permission|denied|not.*admin" && return 0
     echo "Unexpected error accessing journal: $output"
@@ -515,9 +522,6 @@ EOF
   
   bootc_skip_if_unavailable
   
-  local host
-  host="$(bootc_device_host)"
-  
   # Skip if explicitly disabled (to prevent accidental reboots in CI)
   if [ "${SKIP_ACTUAL_REBOOT:-false}" = "true" ]; then
     skip "SKIP_ACTUAL_REBOOT is set - skipping actual reboot test"
@@ -538,14 +542,13 @@ EOF
   # Trigger reboot in background (async)
   # We redirect output to avoid hanging on SSH
   bootc_ssh "nohup systemctl reboot > /dev/null 2>&1 &" &
-  local reboot_pid=$!
   
   # Give it a moment to initiate
   sleep 3
   
   # Verify connection is lost (device is rebooting)
   local connection_lost=false
-  for i in $(seq 1 10); do
+  for _ in $(seq 1 10); do
     if ! bootc_ssh "echo online" &>/dev/null; then
       connection_lost=true
       break
@@ -553,7 +556,7 @@ EOF
     sleep 1
   done
   
-  if ! $connection_lost; then
+  if [ "$connection_lost" = "false" ]; then
     echo "Warning: Connection not lost - reboot may not have initiated"
   fi
   
@@ -562,13 +565,13 @@ EOF
   local online=false
   local elapsed=0
   
-  while [ $elapsed -lt $REBOOT_TIMEOUT ]; do
+  while [ "$elapsed" -lt "$REBOOT_TIMEOUT" ]; do
     if bootc_ssh "echo online" &>/dev/null; then
       online=true
       echo "Device back online after ${elapsed}s"
       break
     fi
-    sleep $REBOOT_POLL_INTERVAL
+    sleep "$REBOOT_POLL_INTERVAL"
     elapsed=$((elapsed + REBOOT_POLL_INTERVAL))
     echo "  Still waiting... ${elapsed}s elapsed"
   done
@@ -740,7 +743,7 @@ EOF
   
   # Note: rollback might not be available if this is a fresh install
   # This is informational - we just report the state
-  if ! $has_rollback_field; then
+  if [ "$has_rollback_field" = "false" ]; then
     echo "No rollback/staged field found - this is normal for fresh install"
   fi
 }
@@ -779,15 +782,17 @@ EOF
   # Then it returns appropriate error
   
   # Test timeout logic with a non-existent host
-  local start_time=$(date +%s)
+  local start_time
+  start_time=$(date +%s)
   
   # Simulate SSH to non-existent host with timeout
   timeout 5 ssh -o BatchMode=yes -o ConnectTimeout=2 -o StrictHostKeyChecking=no root@127.0.0.1 'echo' 2>/dev/null || true
   
-  local elapsed=$(($(date +%s) - start_time))
+  local elapsed
+  elapsed=$(($(date +%s) - start_time))
   
   # Should complete within reasonable time (not hang forever)
-  [ $elapsed -lt 10 ]
+  [ "$elapsed" -lt 10 ]
 }
 
 @test "error: bootc_status handles unreachable device" {
@@ -805,7 +810,7 @@ EOF
   # If result is empty, that's acceptable (device unreachable)
   # If result has content, it should be parseable
   if [ -n "$result" ]; then
-    echo "$result" | grep -qE "."  # Just verify it's not binary garbage
+    echo "$result" | grep -qE "." || true  # Just verify it's not binary garbage
   fi
 }
 
@@ -866,8 +871,7 @@ EOF
   echo "Post-update image: $image_post_update"
   
   # Check if staged update exists
-  local has_staged
-  has_staged=false
+  local has_staged=false
   if echo "$status_post_update" | grep -qE '"staged":\s*\{'; then
     has_staged=true
   fi
@@ -875,7 +879,7 @@ EOF
     has_staged=true
   fi
   
-  if $has_staged; then
+  if [ "$has_staged" = "true" ]; then
     echo "Staged update detected - rollback available"
   fi
   
@@ -886,13 +890,13 @@ EOF
   local online=false
   local elapsed=0
   
-  while [ $elapsed -lt $REBOOT_TIMEOUT ]; do
+  while [ "$elapsed" -lt "$REBOOT_TIMEOUT" ]; do
     if bootc_ssh "echo online" &>/dev/null; then
       online=true
       echo "Device back online after ${elapsed}s"
       break
     fi
-    sleep $REBOOT_POLL_INTERVAL
+    sleep "$REBOOT_POLL_INTERVAL"
     elapsed=$((elapsed + REBOOT_POLL_INTERVAL))
     echo "  Still waiting... ${elapsed}s elapsed"
   done
