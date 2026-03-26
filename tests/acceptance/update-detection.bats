@@ -16,58 +16,17 @@ load '../bats/common.bash'
 load '../bats/fixtures.bash'
 load '../bats/bootc_helpers.bash'
 
+# Load version comparison library from scripts/lib
+# Resolves relative to the bats test directory
+VERSION_LIB="$(cd "${BATS_TEST_DIRNAME}/../bats" && pwd)/../../scripts/lib/version.sh"
+# shellcheck source=../../scripts/lib/version.sh
+source "$VERSION_LIB"
+
 # =============================================================================
 # Test Configuration
 # =============================================================================
 
 REMOTE_IMAGE="${REMOTE_IMAGE:-ghcr.io/llm-at-cormora/nornnet}"
-
-# =============================================================================
-# AC5.1: Version Comparison - Core Logic Tests
-# =============================================================================
-
-# Version comparison using sort -V for semantic versioning
-# Returns 0 if $1 < $2, 1 otherwise
-# Handles equal versions correctly (returns false for equal)
-version_lt() {
-  local v1="$1"
-  local v2="$2"
-  
-  # Equal versions are NOT less than
-  [[ "$v1" = "$v2" ]] && return 1
-  
-  # Use sort -V for proper semantic version comparison
-  [ "$(printf '%s\n%s\n' "$v1" "$v2" | sort -V | head -n1)" = "$v1" ]
-}
-
-# Get the highest version from a space-separated list
-get_latest_version() {
-  local versions="$1"
-  local highest=""
-  
-  for v in $versions; do
-    if [ -z "$highest" ]; then
-      highest="$v"
-    elif version_lt "$highest" "$v"; then
-      highest="$v"
-    fi
-  done
-  
-  echo "$highest"
-}
-
-# Check if version string is valid semver
-is_valid_semver() {
-  local v="$1"
-  [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-}
-
-# Check if update is available
-update_available() {
-  local current="$1"
-  local latest="$2"
-  version_lt "$current" "$latest"
-}
 
 @test "AC5.1: Patch version comparison - 1.0.1 > 1.0.0" {
   version_lt "1.0.0" "1.0.1"
